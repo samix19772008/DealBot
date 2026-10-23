@@ -1,0 +1,40 @@
+{
+    "deal": {
+        "newRequest": "New Escrow Request",
+        "buyer": "Buyer",
+        "seller": "Seller",
+        "item": "Item",
+        "amount": "Amount",
+        "status": "Status",
+        "waitingApproval": "Waiting for {seller}'s approval",
+        "cannotDealSelf": "You cannot open an escrow deal with yourself.",
+        "cannotDealBot": "You cannot open an escrow deal with a bot.",
+        "sentViaDm": "✅ Your request was sent to {seller} via DM. Waiting for their response.",
+        "dmFailedFallback": "{seller} (we couldn't DM you, so we posted the request here)",
+        "dmNotification": "📨 You have a new escrow request from {buyer} on **{guildName}**",
+        "acceptedTitle": "Escrow Deal Accepted",
+        "acceptedWelcome": "Hey {buyer} and {seller}! This is your private thread to complete deal `{uuid}`.\n\nIf any disagreement comes up during the deal, you can open a dispute using the button below at any time.",
+        "statusWaitingPayment": "Waiting for payment",
+        "step1Title": "Step 1: Confirm Payment",
+        "step1Instruction": "{buyer} sends the payment, then clicks the button below"
+    },
+    "buttons": {
+        "accept": "Accept Deal",
+        "cancel": "Cancel",
+        "confirmPayment": "Confirm Payment",
+        "confirmDelivery": "Confirm Delivery",
+        "confirmReceipt": "Confirm Receipt, End Deal",
+        "openDispute": "Open Dispute"
+    },
+    "common": {
+        "dealNotFound": "This deal no longer exists.",
+        "autoArchiveNote": "This conversation will auto-archive after 24 hours of inactivity",
+        "noAutoVerifyPayment": "The bot does not verify payment automatically — confirm it yourself before clicking",
+        "acceptedFooter": "✅ Confirmed by {user}"
+    },
+    "errors": {
+        "notDesignatedSeller": "You cannot accept this deal, you are not the designated seller.",
+        "alreadyStatus": "This deal is already in status \"{status}\" and cannot be accepted again.",
+        "hubNotConfigured": "The main escrow hub channel isn't set up on this server. Ask an admin to run `/set-hub-channel` first."
+    }
+}
