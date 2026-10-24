@@ -1,3 +1,4 @@
+const { formatPayment } = require('../../utils/payments');
 const {
     ChannelType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits,
 } = require('discord.js');
@@ -96,7 +97,7 @@ module.exports = {
                 status: 'info',
                 rows: [
                     { label: 'Item or Service', value: escrow.item_description },
-                    { label: 'Agreed Amount', value: `${Number(escrow.amount).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${escrow.currency}` },
+                    { label: 'Agreed Amount', value: formatPayment(escrow) },
                     { label: 'Next Step', value: 'The buyer confirms payment has been sent. The seller must independently verify receipt before delivering.' },
                     { label: 'Payment Tracking', value: 'DealBot records your confirmations. It does not hold, transfer, or verify money or items.' },
                 ],

@@ -26,6 +26,7 @@ function initDatabase() {
                 diamond_role_id: 'TEXT',
             },
             escrow_transactions: {
+                payment_unit: "TEXT CHECK (payment_unit IN ('each', 'stacks'))",
                 buyer_close_approved: 'BOOLEAN NOT NULL DEFAULT 0',
                 seller_close_approved: 'BOOLEAN NOT NULL DEFAULT 0',
             },

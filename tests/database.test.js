@@ -50,6 +50,8 @@ test('legacy migration preserves settings, profiles and deals across two initial
     const schema = fs.readFileSync(path.join(__dirname, '../src/database/schema.sql'), 'utf8')
         .replace(/^.*buyer_close_approved.*\r?\n/gm, '')
         .replace(/^.*seller_close_approved.*\r?\n/gm, '')
+        .replace(/^.*payment_unit.*\r?\n/gm, '')
+        .replace(/CREATE TABLE IF NOT EXISTS escrow_thread_closures[\s\S]*$/, '')
         .replace(/^.*(?:hub_channel_id|language\s+TEXT|(?:bronze|silver|gold|platinum|diamond)_role_id).*\r?\n/gm, '');
     legacy.exec(schema);
     legacy.exec("ALTER TABLE guild_settings ADD COLUMN language TEXT DEFAULT 'ar'");
@@ -77,6 +79,10 @@ test('legacy migration preserves settings, profiles and deals across two initial
         const deal = require('./src/database/escrowRepository').getEscrowById('esc-legacy');
         assert.equal(deal.item_description, 'Original item');
         assert.equal(deal.buyer_close_approved, 0);
+        assert.equal(deal.amount, 10);
+        assert.equal(deal.currency, 'USD');
+        assert.equal(deal.payment_unit, null);
+        assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'escrow_thread_closures'").get());
         assert.equal(db.prepare('SELECT trust_score FROM users WHERE id = 1').get().trust_score, 15);
         db.close();
     `;
@@ -217,6 +223,43 @@ test('close approvals are allowed only on resolved deals and are recorded once',
     const latest = escrows.getEscrowById(deal.id);
     assert.equal(latest.buyer_close_approved, 1);
     assert.equal(latest.seller_close_approved, 1);
+});
+
+
+test('payment units preserve nominal stack counts and canonical market names', () => {
+    const buyer = user();
+    const seller = user();
+    const defaults = { guildId: 'market-guild', buyerId: buyer.id, sellerId: seller.id,
+        itemDescription: 'Game blocks', amount: 20 };
+    for (const currency of ['Golds', 'Redblocks', 'Sky 1 Notchs']) {
+        const deal = escrows.createEscrow({ ...defaults, currency, paymentUnit: 'stacks' });
+        assert.equal(deal.amount, 20, 'Do not convert nominal stacks to individual items in storage');
+        assert.equal(deal.currency, currency);
+        assert.equal(deal.payment_unit, 'stacks');
+        assert.equal(escrows.getEscrowById(deal.id).payment_unit, 'stacks');
+    }
+    const money = escrows.createEscrow({ ...defaults, amount: 10.25, currency: 'USD', paymentUnit: 'each' });
+    assert.equal(money.amount, 10.25);
+    assert.equal(money.payment_unit, 'each');
+    const legacy = escrows.createEscrow({ ...defaults, amount: 10.25, currency: 'Legacy coins' });
+    assert.equal(legacy.currency, 'Legacy coins');
+    assert.equal(legacy.payment_unit, null);
+});
+
+test('market-unit validation refuses unsupported units, money stacks, and fractional game quantities', () => {
+    const buyer = user();
+    const seller = user();
+    const defaults = { guildId: 'market-guild', buyerId: buyer.id, sellerId: seller.id,
+        itemDescription: 'Market item', amount: 20, currency: 'Golds', paymentUnit: 'each' };
+    assert.throws(() => escrows.createEscrow({ ...defaults, paymentUnit: 'boxes' }), /unit/);
+    assert.throws(() => escrows.createEscrow({ ...defaults, currency: 'USD', paymentUnit: 'stacks' }));
+    assert.throws(() => escrows.createEscrow({ ...defaults, amount: 2.5 }));
+    assert.throws(() => escrows.createEscrow({ ...defaults, amount: 2.5, paymentUnit: 'stacks' }));
+    assert.throws(() => escrows.createEscrow({ ...defaults, amount: 9999999999, paymentUnit: 'stacks' }));
+    assert.throws(() => escrows.createEscrow({ ...defaults, currency: 'Unsupported token' }));
+    const legacy = escrows.createEscrow({ ...defaults, amount: 2.5, currency: 'Old game coins', paymentUnit: null });
+    assert.equal(legacy.amount, 2.5);
+    assert.equal(legacy.payment_unit, null);
 });
 
 test.after(() => db.close());

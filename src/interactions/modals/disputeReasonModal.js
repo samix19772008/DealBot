@@ -1,3 +1,4 @@
+const { formatPayment } = require('../../utils/payments');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
 const { markAsDisputed } = require('../../database/escrowRepository');
 const { getGuildSettings } = require('../../database/guildSettingsRepository');
@@ -32,7 +33,7 @@ module.exports = {
             .setDescription(`Opened by <@${interaction.user.id}>. Further payment, delivery, and receipt confirmations are paused until a moderator resolves this dispute.`)
             .addFields(
                 { name: 'Deal Reference', value: `\`${escrow.transaction_uuid}\``, inline: true },
-                { name: 'Amount', value: `${escrow.amount.toLocaleString('en-US')} ${escrow.currency}`, inline: true },
+                { name: 'Amount', value: formatPayment(escrow), inline: true },
                 { name: 'Reason', value: reason },
             )
             .setFooter({ text: 'Only authorized moderators can choose a resolution. The bot does not issue refunds.' }).setTimestamp();

@@ -1,4 +1,5 @@
-const { ContextMenuCommandBuilder, ApplicationCommandType, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+const { ContextMenuCommandBuilder, ApplicationCommandType, StringSelectMenuBuilder, ActionRowBuilder } = require('discord.js');
+const { PAYMENT_METHODS } = require('../../utils/payments');
 
 module.exports = {
     data: new ContextMenuCommandBuilder()
@@ -7,41 +8,32 @@ module.exports = {
         .setDMPermission(false),
 
     async execute(interaction) {
+        if (!interaction.guildId) {
+            return interaction.reply({ content: 'Request a deal from a message inside your server.', ephemeral: true });
+        }
         const targetMessage = interaction.targetMessage;
-
+        if (!targetMessage?.author) {
+            return interaction.reply({ content: 'The source message is unavailable. Open the request again.', ephemeral: true });
+        }
         if (targetMessage.author.bot) {
             return interaction.reply({ content: 'You cannot open a deal on a bot message.', ephemeral: true });
         }
-
         if (targetMessage.author.id === interaction.user.id) {
             return interaction.reply({ content: 'You cannot open a deal with yourself.', ephemeral: true });
         }
 
-        const modal = new ModalBuilder()
-            .setCustomId(`deal_offer_modal_${targetMessage.channelId}_${targetMessage.id}`)
-            .setTitle('Deal Details');
+        const menu = new StringSelectMenuBuilder()
+            .setCustomId(`deal_payment_method_${targetMessage.channelId}_${targetMessage.id}_${interaction.user.id}`)
+            .setPlaceholder('Choose the payment method')
+            .setMinValues(1)
+            .setMaxValues(1)
+            .addOptions(PAYMENT_METHODS.map(method => ({ label: method.label, value: method.key })));
 
-        const amountInput = new TextInputBuilder()
-            .setCustomId('amount')
-            .setLabel('Amount (numbers only)')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Example: 25.50')
-            .setMaxLength(13)
-            .setRequired(true);
-
-        const currencyInput = new TextInputBuilder()
-            .setCustomId('currency')
-            .setLabel('Currency or payment unit')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Example: gold or USD')
-            .setMaxLength(24)
-            .setRequired(true);
-
-        modal.addComponents(
-            new ActionRowBuilder().addComponents(amountInput),
-            new ActionRowBuilder().addComponents(currencyInput),
-        );
-
-        await interaction.showModal(modal);
+        await interaction.reply({
+            content: 'Choose one payment method agreed with the seller. Enter the total payment next, not the quantity of the item you are buying.',
+            components: [new ActionRowBuilder().addComponents(menu)],
+            ephemeral: true,
+            allowedMentions: { parse: [] },
+        });
     },
 };

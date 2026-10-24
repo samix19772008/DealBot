@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS escrow_transactions (
 
     amount              DECIMAL(12,2) NOT NULL,
     currency            TEXT NOT NULL DEFAULT 'USD',
+    payment_unit        TEXT CHECK (payment_unit IN ('each', 'stacks')),
 
     status              TEXT NOT NULL DEFAULT 'pending'
                             CHECK (status IN (
@@ -79,3 +80,17 @@ CREATE TABLE IF NOT EXISTS escrow_events (
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_escrow_events_escrow ON escrow_events(escrow_id, id);
+
+
+CREATE TABLE IF NOT EXISTS escrow_thread_closures (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    escrow_id           INTEGER NOT NULL REFERENCES escrow_transactions(id) ON DELETE CASCADE,
+    actor_discord_id    TEXT,
+    actor_name          TEXT,
+    kind                TEXT NOT NULL CHECK (kind IN ('participant', 'moderator', 'untracked')),
+    status              TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'archived', 'failed')),
+    requested_at        DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
+    archive_timestamp   INTEGER,
+    UNIQUE (escrow_id, archive_timestamp)
+);
+CREATE INDEX IF NOT EXISTS idx_thread_closures_pending ON escrow_thread_closures(escrow_id, status, id);

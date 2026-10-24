@@ -1,6 +1,13 @@
 const { EmbedBuilder } = require('discord.js');
 const { getEscrowById, approveBuyerClose, approveSellerClose } = require('../../database/escrowRepository');
+const { closeDealThread } = require('../../utils/threadClosure');
 const { deny, getScopedDeal, isParticipant, closeButtons } = require('../helpers');
+
+async function reportMetadataDelay(interaction, result) {
+    if (!result.metadataPending) return;
+    console.warn('[CLOSE] Conversation archived; closure metadata is pending:', result.metadataError?.message || 'No archive record returned');
+    await deny(interaction, 'The conversation was archived successfully. Its closure details are still being finalized.').catch(() => {});
+}
 
 module.exports = {
     id: 'approve_close_',
@@ -29,12 +36,23 @@ module.exports = {
             if (!changed) return deny(interaction, 'You have already approved closing. Waiting for the other participant.');
             return interaction.editReply({ embeds: [embed] });
         }
+        const options = {
+            channel: interaction.channel, escrowId: escrow.id, actor: interaction.user,
+            kind: 'participant', reason: 'Both deal participants approved closing',
+        };
         try {
-            await interaction.channel.send('🔒 Both participants approved closing. A transcript will be sent when this conversation is archived.');
-            await interaction.editReply({ embeds: [embed.setFooter({ text: 'Closed with approval from both participants.' })], components: [] });
-            await interaction.channel.setLocked(true, 'Both deal participants approved closing');
-            await interaction.channel.setArchived(true, 'Both deal participants approved closing');
+            if (!interaction.channel.archived) {
+                await interaction.channel.send('🔒 Both participants approved closing. A transcript will be sent after this conversation is archived.');
+                await interaction.editReply({ embeds: [embed.setFooter({ text: 'Closure approved by both participants.' })], components: [] });
+            }
+            const result = await closeDealThread(options);
+            await reportMetadataDelay(interaction, result);
         } catch (error) {
+            if (interaction.channel.archived) {
+                const result = await closeDealThread(options);
+                await reportMetadataDelay(interaction, result);
+                return;
+            }
             console.warn('[CLOSE] Could not close deal thread:', error.message);
             await interaction.editReply({
                 embeds: [embed.setFooter({ text: 'Closing failed. Check the bot permissions, then try Approve Close or Force Close again.' })],

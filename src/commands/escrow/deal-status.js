@@ -1,3 +1,4 @@
+const { formatPayment } = require('../../utils/payments');
 const { SlashCommandBuilder, EmbedBuilder, escapeMarkdown } = require('discord.js');
 const { getEscrowById, getEscrowEvents } = require('../../database/escrowRepository');
 const { isModerator } = require('../../utils/permissions');
@@ -40,7 +41,7 @@ module.exports = {
             .setDescription(`\`${escrow.transaction_uuid}\``)
             .addFields(
                 { name: 'Status', value: displayStatus(escrow.status), inline: true },
-                { name: 'Amount', value: `${Number(escrow.amount).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${escapeMarkdown(escrow.currency)}`, inline: true },
+                { name: 'Amount', value: formatPayment(escrow), inline: true },
                 { name: 'Buyer', value: `<@${escrow.buyer_discord_id}>`, inline: true },
                 { name: 'Seller', value: `<@${escrow.seller_discord_id}>`, inline: true },
                 { name: 'Item or Service', value: shorten(escapeMarkdown(escrow.item_description), 1000) },

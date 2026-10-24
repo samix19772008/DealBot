@@ -12,7 +12,9 @@ DealBot records participant confirmations. It does **not** hold, transfer, verif
 4. Use Node.js 24 LTS, or Node.js 22.16 or newer. Run `npm ci` to install dependencies for your operating system. Do not reuse a copied `node_modules` folder.
 5. Enable the Discord intents below, run `npm run commands:deploy` to refresh the server commands, then `npm start`.
 
-Startup automatically adds missing settings, rank-role, close-approval, and activity-log tables/columns. Existing profiles, deals, and settings remain. The old `add-*-columns.js` entry points still work, but manual migrations are unnecessary. New activity events are recorded from this version onward; old events are not reconstructed.
+Startup automatically adds missing settings, rank-role, close-approval, payment-unit, activity-log, and closure-record tables/columns. Existing profiles, deals, and settings remain. Old deals keep their literal amounts and currencies: the upgrade never guesses whether an old number meant stacks. The old `add-*-columns.js` entry points still work, but manual migrations are unnecessary. New activity events are recorded from this version onward; old events are not reconstructed.
+
+**Version 1.2 changes the `/deal` options. Run `npm run commands:deploy` after updating**, so Discord replaces the old free-text `price` field with the new payment choices.
 
 ## New installation
 
@@ -50,8 +52,8 @@ As a server administrator, run `/set-hub-channel` and `/set-mod-role`. Optionall
 
 | Command | Use |
 | --- | --- |
-| `/deal seller item price` | Send a deal request, for example a price of `12.50 USD` or `50 gold` |
-| Message → Apps → Request a Deal | Start a request using the message's author and contents |
+| `/deal seller item payment amount unit` | Choose one listed payment method and enter the total agreed payment |
+| Message → Apps → Request a Deal | Choose a payment method privately, then enter the amount; the listing supplies the seller and item |
 | `/deals status page` | Privately list your active or all deals in the current server |
 | `/deal-status reference` | Privately inspect a reference or numeric deal ID and recent activity |
 | `/profile user` | Show a user's cross-server trust score, rank, and deal statistics |
@@ -65,6 +67,21 @@ As a server administrator, run `/set-hub-channel` and `/set-mod-role`. Optionall
 
 Commands and deal listings are server-only. A deal's private status is visible to its participants and authorized staff in its own server.
 
+## Buying from a market post
+
+The easiest route is to right-click the seller's post and choose **Apps → Request a Deal**. Choose **Money**, **Golds**, **Redblocks**, or **Sky 1 Notchs** from the private menu. Enter the total payment shown in the post. For a game currency, leave the unit blank for individual items or enter `stacks` for stacks of 64. Text listings and embed-only listings are supported. Source-message access and private-thread membership are checked again when the form is submitted.
+
+Alternatively, use `/deal`. These are four separate example offers for the same Menace Cape listing:
+
+```text
+/deal seller:@Seller item:Menace Cape payment:Money amount:2
+/deal seller:@Seller item:Menace Cape payment:Golds amount:45
+/deal seller:@Seller item:Menace Cape payment:Redblocks amount:20 unit:Stacks
+/deal seller:@Seller item:Menace Cape payment:Sky 1 Notchs amount:20
+```
+
+Pick **one** option that the seller accepts. These listing prices are not currency exchange rates; DealBot does not convert or infer them. **Amount means the total agreed payment, not the quantity of the item being bought.** Money is in US dollars with up to two decimal places. Game payments use whole items or whole stacks. `20` with `Redblocks` and `Stacks` is shown consistently as **20 stacks of Redblocks (1,280 blocks)**; the stored amount remains 20 stacks.
+
 ## Deal workflow and recovery
 
 1. The buyer sends a request. The seller receives it by DM. If DMs are closed, the offer, including its details, is posted in the configured hub. Use a hub suitable for those visible offers.
@@ -76,7 +93,17 @@ Commands and deal listings are server-only. A deal's private status is visible t
 
 **Recover missing buttons:** run `/deal-status` inside the deal's original private thread to restore the controls for its persisted state. This also works after a restart or failed Discord message. Pending requests can be inspected anywhere in the same server: the buyer can cancel, and the seller can accept or cancel. Repeated actions cannot award trust twice or overwrite an incompatible status.
 
-Each buyer can have up to 10 active deals and send one new request every 15 seconds per server. The short cooldown is process-local and resets on restart. Amounts must be positive, at most `9,999,999,999.99`, with at most two decimal places. Items are limited to 1,000 characters and payment units to 24 characters.
+Each buyer can have up to 10 active deals and send one new request every 15 seconds per server. The short cooldown is process-local and resets on restart. Money amounts must be positive and at most `9,999,999,999.99`, with at most two decimal places. Game payments must contain at most `9,999,999,999` individual items, including the multiplication by 64 for stacks. Item descriptions are limited to 1,000 characters.
+
+## Transcript cards
+
+![Illustrative transcript DM card](docs/transcript-preview.svg)
+
+After a deal conversation is archived, both participants receive a purple summary card with the server's icon, item, reference, buyer, seller, agreed payment, closer, and closing time. Names and IDs use clear code-block fields, similar to a ticket transcript. **View Deal** opens the original private conversation; the HTML conversation transcript is attached to the same DM. The file uses the item name, such as `transcript-menace-cape-42.html`.
+
+The closer is recorded before an archive request and confirmed using Discord's archive timestamp. Participant approval and moderator closure retain their actual actor. Archives made outside DealBot's close controls are labeled **Automatic archive or a Discord-side action**, since the bot cannot identify that actor from a thread update alone. Failed attempts and reopened threads do not inherit the wrong closer. REST and Gateway observations of the same archive share a delivery operation, including SDK cache races.
+
+The preview is illustrative; Discord controls the theme and attachment preview. If transcript generation fails, the summary still arrives with an explicit unavailable-file message. Closed DMs are logged independently so one recipient does not prevent the other from receiving their record.
 
 Transcripts include up to the latest 10,000 messages. Attachments remain links and depend on Discord availability. Delivery requires the participant to accept the bot's DMs; a failed DM is logged and is not retried automatically. An auto-archive does not complete or cancel an active deal; `/deals` still shows its recorded state. Reopen the thread before using its controls.
 
@@ -86,11 +113,12 @@ Transcripts include up to the latest 10,000 messages. Attachments remain links a
 npm test
 npm run check
 npm run commands:validate
+npm run preview:transcript
 npm run db:init
 npm run dev
 ```
 
-Tests use isolated temporary or in-memory databases and simulated Discord interactions. They do not log in, publish commands, or send messages. Coverage includes migrations of an old schema, atomic state changes, rollback, replay protection, permissions, private listings, recovery controls, and English command definitions. The check command verifies JavaScript syntax, JSON, and the absence of Arabic text in built-in source strings.
+Tests use isolated temporary or in-memory databases and simulated Discord interactions. They do not log in, publish commands, or send messages. Coverage includes migrations of an old schema, atomic state changes, rollback, replay protection, permissions, private listings, recovery controls, English command definitions, payment selection and stack validation, closure attribution, transcript generation, and duplicate-delivery prevention. The check command verifies JavaScript syntax, JSON, and the absence of Arabic text in built-in source strings.
 
 `commands:validate` serializes and validates command definitions without credentials or HTTP. Only `commands:deploy` registers them. `db:init` applies idempotent migrations. For native SQLite build tools on Linux, install Python, Make, and a C++ compiler if your Node version has no prebuilt module.
 

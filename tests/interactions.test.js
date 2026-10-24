@@ -354,7 +354,7 @@ test('accepted private thread survives a later offer-update failure', async () =
 });
 
 test('deal offer modal rejects a malformed amount before fetching messages', async () => {
-    const i = interaction('deal_offer_modal_300000000000000001_400000000000000001');
+    const i = interaction('deal_offer_modal_money_300000000000000001_400000000000000001_100000000000000001');
     i.fields.getTextInputValue = name => name === 'amount' ? '25invalid' : 'USD';
     await offerModal.execute(i);
     assert.match(content(i), /positive amount/);
@@ -362,7 +362,7 @@ test('deal offer modal rejects a malformed amount before fetching messages', asy
 });
 
 test('deal offer modal cannot read a private thread after membership is removed', async () => {
-    const i = interaction('deal_offer_modal_300000000000000001_400000000000000001');
+    const i = interaction('deal_offer_modal_money_300000000000000001_400000000000000001_100000000000000001');
     i.fields.getTextInputValue = name => name === 'amount' ? '25.50' : 'USD';
     let reads = 0;
     i.guild.channels = { fetch: async () => ({

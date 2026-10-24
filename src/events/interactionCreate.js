@@ -11,7 +11,7 @@ async function report(interaction, content) {
 }
 
 function getActionEscrowId(interaction, handler) {
-    if (handler.id === 'deal_offer_modal_') return null;
+    if (['deal_offer_modal_', 'deal_payment_method_'].includes(handler.id)) return null;
     const value = interaction.customId.slice(handler.id.length);
     const match = handler.id === 'scammer_pick_' ? value.match(/^(?:buyer|seller)_(\d+)$/) : value.match(/^(\d+)$/);
     return match?.[1] ?? false;
@@ -58,8 +58,9 @@ module.exports = {
                 }
                 return await command.execute(interaction, client);
             }
-            if (interaction.isButton() || interaction.isModalSubmit()) {
-                const handlers = interaction.isButton() ? client.buttons : client.modals;
+            if (interaction.isButton() || interaction.isModalSubmit() || interaction.isStringSelectMenu?.()) {
+                const handlers = (interaction.isButton() ? client.buttons
+                    : interaction.isStringSelectMenu?.() ? client.selects : client.modals) ?? [];
                 const handler = handlers.find(entry => interaction.customId.startsWith(entry.id));
                 if (!handler) return report(interaction, 'These controls are no longer available. Use /deal-status to view the current deal.');
                 return await executeAction(interaction, handler);

@@ -5,6 +5,7 @@ const { createEscrow, cancelEscrow, listEscrowsForUser } = require('../database/
 const { getGuildSettings } = require('../database/guildSettingsRepository');
 const { validateDealInput } = require('./validation');
 const { t } = require('./i18n');
+const { resolvePayment, formatPayment } = require('./payments');
 
 const offerCooldowns = new Map();
 const REQUIRED_HUB_PERMISSIONS = [
@@ -19,7 +20,7 @@ async function respond(interaction, payload) {
     return interaction.reply({ ...payload, ephemeral: true });
 }
 
-async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, amount, currency = 'USD' }) {
+async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, amount, currency = 'USD', paymentUnit = 'each' }) {
     if (!interaction.guildId || !interaction.guild) {
         return respond(interaction, { content: 'Start a deal from inside your server.' });
     }
@@ -29,7 +30,10 @@ async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, 
     if (sellerDiscordUser.bot) return respond(interaction, { content: t('deal.cannotDealBot', 'en') });
 
     let details;
-    try { details = validateDealInput({ itemDescription, amount, currency }); }
+    try {
+        const payment = resolvePayment({ method: currency, amount, unit: paymentUnit });
+        details = { ...validateDealInput({ itemDescription, ...payment }), paymentUnit: payment.paymentUnit };
+    }
     catch (error) { return respond(interaction, { content: error.message }); }
 
     const buyer = getOrCreateUser(interaction.user);
@@ -87,7 +91,7 @@ async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, 
             { label: 'Buyer', value: `<@${interaction.user.id}>` },
             { label: 'Seller', value: `<@${sellerDiscordUser.id}>` },
             { label: 'Item', value: details.itemDescription },
-            { label: 'Amount', value: `${details.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${details.currency}` },
+            { label: 'Agreed Payment', value: formatPayment(details) },
         ],
         footerNote: 'Payment is arranged by participants. DealBot does not hold or verify funds.',
     });

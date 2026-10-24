@@ -33,7 +33,7 @@ function getEscrowByChannelId(channelId) {
     return findByChannel.get(channelId);
 }
 
-function validateDeal({ guildId, buyerId, sellerId, itemDescription, amount, currency }) {
+function validateDeal({ guildId, buyerId, sellerId, itemDescription, amount, currency, paymentUnit }) {
     if (!guildId) throw new Error('A server is required to create a deal.');
     if (!buyerId || !sellerId || String(buyerId) === String(sellerId)) {
         throw new Error('A deal must have two different participants.');
@@ -51,24 +51,30 @@ function validateDeal({ guildId, buyerId, sellerId, itemDescription, amount, cur
         if (!user) throw new Error('Both participants must have a trust profile.');
         if (user.is_scammer) throw new Error('Users flagged as scammers cannot open new deals.');
     }
+    if (paymentUnit == null) return { amount, currency, paymentUnit: null };
+    if (!['each', 'stacks'].includes(paymentUnit)) throw new Error('The payment unit must be each or stacks.');
+    // The market helper returns canonical currency names without converting a
+    // nominal stack count into individual items. Legacy deals remain untouched.
+    const { resolvePayment } = require('../utils/payments');
+    return resolvePayment({ method: currency, amount, unit: paymentUnit });
 }
 
 const createDeal = db.transaction(params => {
-    validateDeal(params);
-    const { guildId, buyerId, sellerId, itemDescription, amount, currency } = params;
+    const { amount, currency, paymentUnit } = validateDeal(params);
+    const { guildId, buyerId, sellerId, itemDescription } = params;
     const result = db.prepare(`
         INSERT INTO escrow_transactions
-            (transaction_uuid, guild_id, buyer_id, seller_id, item_description, amount, currency)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (transaction_uuid, guild_id, buyer_id, seller_id, item_description, amount, currency, payment_unit)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(`ESC-${randomUUID().toUpperCase()}`, guildId, buyerId, sellerId, itemDescription.trim(),
-        Math.round(amount * 100) / 100, currency.trim());
+        Math.round(amount * 100) / 100, currency.trim(), paymentUnit);
     const escrow = getEscrowById(result.lastInsertRowid);
     audit(escrow.id, 'created', null, 'pending', escrow.buyer_discord_id);
     return escrow;
 });
 
-function createEscrow({ guildId, buyerId, sellerId, itemDescription, amount, currency = 'USD' }) {
-    return createDeal.immediate({ guildId, buyerId, sellerId, itemDescription, amount, currency });
+function createEscrow({ guildId, buyerId, sellerId, itemDescription, amount, currency = 'USD', paymentUnit }) {
+    return createDeal.immediate({ guildId, buyerId, sellerId, itemDescription, amount, currency, paymentUnit });
 }
 
 /** A compare-and-set and its audit entry commit together or neither commits. */

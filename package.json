@@ -1,6 +1,6 @@
 {
   "name": "escrow-bot",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "English Discord deal tracking with private threads, dispute moderation, and trust profiles.",
   "main": "index.js",
   "scripts": {
@@ -10,7 +10,8 @@
     "check": "node scripts/check.js",
     "commands:validate": "node deploy-commands.js --dry-run",
     "commands:deploy": "node deploy-commands.js",
-    "db:init": "node scripts/init-db.js"
+    "db:init": "node scripts/init-db.js",
+    "preview:transcript": "node scripts/preview-transcript.js"
   },
   "keywords": [],
   "author": "",

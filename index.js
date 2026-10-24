@@ -8,11 +8,13 @@ async function start() {
     const { loadEvents } = require('./src/handlers/eventHandler');
     const { loadButtons } = require('./src/handlers/buttonHandler');
     const { loadModals } = require('./src/handlers/modalHandler');
+    const { loadSelects } = require('./src/handlers/selectHandler');
     require('./src/database/init').initDatabase();
     loadCommands(client);
     loadEvents(client);
     loadButtons(client);
     loadModals(client);
+    loadSelects(client);
     client.on('error', error => console.error('[CLIENT] Discord error:', error.code ?? error.name));
     for (const signal of ['SIGINT', 'SIGTERM']) {
         process.once(signal, () => {

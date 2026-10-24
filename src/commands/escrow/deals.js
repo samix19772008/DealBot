@@ -1,3 +1,4 @@
+const { formatPayment } = require('../../utils/payments');
 const { SlashCommandBuilder, EmbedBuilder, escapeMarkdown } = require('discord.js');
 const { listEscrowsForUser } = require('../../database/escrowRepository');
 
@@ -38,11 +39,11 @@ module.exports = {
         for (const deal of deals) {
             const otherId = deal.buyer_discord_id === interaction.user.id ? deal.seller_discord_id : deal.buyer_discord_id;
             const item = escapeMarkdown(String(deal.item_description).slice(0, 160));
-            const amount = Number(deal.amount).toLocaleString('en-US', { maximumFractionDigits: 2 });
+            const payment = formatPayment(deal);
             const thread = deal.channel_id ? `\n[Open conversation](https://discord.com/channels/${interaction.guildId}/${deal.channel_id})` : '';
             embed.addFields({
                 name: deal.transaction_uuid,
-                value: `**${displayStatus(deal.status)}** · ${amount} ${escapeMarkdown(deal.currency)}\nWith <@${otherId}>\n${item}${thread}`,
+                value: `**${displayStatus(deal.status)}** · ${escapeMarkdown(payment)}\nWith <@${otherId}>\n${item}${thread}`,
             });
         }
         return interaction.reply({ embeds: [embed], ephemeral: true, allowedMentions: { parse: [] } });

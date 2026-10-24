@@ -137,12 +137,17 @@ test('/deal-status permits participants and configured staff, including recorded
     }
 });
 
-test('/deal rejects malformed prices before creating a request', async () => {
+test('/deal rejects unsupported, fractional-game, and invalid payments before creating a request', async () => {
     cleanDatabase();
-    for (const price of ['12', '2.999 USD', 'Infinity USD', '-1 USD']) {
-        const input = interaction({ options: { getString: name => name === 'item' ? 'Example' : price, getUser: () => discordUser('seller') } });
+    for (const [method, amount, unit] of [['bitcoin', 2, 'each'], ['money', 0, 'each'], ['money', 1.001, 'each'], ['money', 2, 'stacks'], ['golds', 2.5, 'each']]) {
+        const input = interaction({ options: {
+            getString: name => ({ item: 'Example', payment: method, unit })[name],
+            getNumber: () => amount,
+            getUser: () => discordUser('seller'),
+        } });
         await command('deal').execute(input);
         assert.equal(input.replies[0].ephemeral, true);
+        assert.match(input.replies[0].content, /Choose one payment|amount|Money|whole number/);
         assert.equal(db.prepare('SELECT COUNT(*) AS n FROM escrow_transactions').get().n, 0);
     }
 });

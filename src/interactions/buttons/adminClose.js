@@ -1,5 +1,12 @@
 const { isModerator } = require('../../utils/permissions');
+const { closeDealThread } = require('../../utils/threadClosure');
 const { deny, getScopedDeal, confirmedEmbed, closeButtons } = require('../helpers');
+
+async function reportMetadataDelay(interaction, result) {
+    if (!result.metadataPending) return;
+    console.warn('[CLOSE] Conversation archived; closure metadata is pending:', result.metadataError?.message || 'No archive record returned');
+    await deny(interaction, 'The conversation was archived successfully. Its closure details are still being finalized.').catch(() => {});
+}
 
 module.exports = {
     id: 'admin_close_',
@@ -12,12 +19,26 @@ module.exports = {
         }
         if (!interaction.channel?.isThread?.()) return deny(interaction, 'This action requires the private deal thread.');
         await interaction.deferUpdate();
+        const options = {
+            channel: interaction.channel, escrowId: escrow.id, actor: interaction.user,
+            kind: 'moderator', reason: `Closed by moderator ${interaction.user.id}`,
+        };
         try {
-            await interaction.channel.send(`🔒 Moderator <@${interaction.user.id}> closed this conversation. A transcript will be sent when it is archived.`);
-            await interaction.editReply({ embeds: [confirmedEmbed(interaction, `Closed by moderator ${interaction.user.tag}`, 0x2B2D31)], components: [] });
-            await interaction.channel.setLocked(true, `Closed by moderator ${interaction.user.id}`);
-            await interaction.channel.setArchived(true, `Closed by moderator ${interaction.user.id}`);
+            if (!interaction.channel.archived) {
+                await interaction.channel.send(`🔒 Moderator <@${interaction.user.id}> requested closing this conversation. A transcript will be sent after it is archived.`);
+                await interaction.editReply({
+                    embeds: [confirmedEmbed(interaction, `Closure requested by moderator ${interaction.user.tag}`, 0x2B2D31)], components: [],
+                });
+            }
+            const result = await closeDealThread(options);
+            await reportMetadataDelay(interaction, result);
         } catch (error) {
+            // A Gateway update may reveal an external archive while a UI request fails.
+            if (interaction.channel.archived) {
+                const result = await closeDealThread(options);
+                await reportMetadataDelay(interaction, result);
+                return;
+            }
             console.warn('[CLOSE] Could not close deal thread:', error.message);
             await interaction.editReply({
                 embeds: [confirmedEmbed(interaction, 'Closing failed. Check Manage Threads permission, then try again.', 0xED4245)],
