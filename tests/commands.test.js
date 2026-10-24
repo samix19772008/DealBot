@@ -50,7 +50,7 @@ function interaction(options = {}) {
 
 test('every command definition is English, unique, valid, and unavailable in DMs', () => {
     const names = new Set();
-    assert.equal(commands.length, 12);
+    assert.equal(commands.length, 15);
     for (const entry of commands) {
         const data = entry.data.toJSON();
         assert.equal(data.dm_permission, false, data.name);
@@ -63,7 +63,7 @@ test('every command definition is English, unique, valid, and unavailable in DMs
 
 test('all setup commands independently reject a member without Administrator', async () => {
     cleanDatabase();
-    for (const name of ['set-hub-channel', 'set-mod-role', 'set-rank-role', 'set-rank', 'set-language']) {
+    for (const name of ['set-hub-channel', 'set-mod-role', 'set-rank-role', 'set-rank', 'set-language', 'setup', 'stats', 'review-flag']) {
         const input = interaction();
         await command(name).execute(input);
         assert.equal(input.replies.length, 1, name);
@@ -182,6 +182,8 @@ test('/help explains manual payment tracking and the available workflow', async 
     assert.equal(input.replies[0].ephemeral, true);
     assert.match(JSON.stringify(json), /does not hold funds/);
     assert.ok(json.fields.some(field => field.value.includes('/deal-status')));
+    assert.match(JSON.stringify(json), /public-offer:true/);
+    assert.match(JSON.stringify(json), /cancelled without posting/);
     assert.ok(JSON.stringify(json).length < 6000);
 });
 
@@ -250,4 +252,21 @@ test('/deal-status limits recovered dispute resolution and force-close controls 
             assert.ok(moderatorIds.includes(`admin_close_${own.id}`));
         }
     }
+});
+
+
+test('/deals and /deal-status expire only stale pending requests in the current server', async () => {
+    cleanDatabase();
+    const own = seedDeal();
+    const foreign = seedDeal('guild-b');
+    db.prepare("UPDATE escrow_transactions SET created_at = datetime('now', '-25 hours') WHERE id IN (?, ?)").run(own.id, foreign.id);
+    const list = interaction();
+    await command('deals').execute(list);
+    assert.equal(list.replies[0].embeds[0].toJSON().fields?.length ?? 0, 0);
+    assert.equal(db.prepare('SELECT status FROM escrow_transactions WHERE id = ?').get(own.id).status, 'cancelled');
+    assert.equal(db.prepare('SELECT status FROM escrow_transactions WHERE id = ?').get(foreign.id).status, 'pending');
+    const details = interaction({ options: { getString: () => own.transaction_uuid } });
+    await command('deal-status').execute(details);
+    assert.match(JSON.stringify(details.replies[0].embeds[0].toJSON()), /request ended before a private conversation/);
+    assert.deepEqual(controlIds(details.replies[0]), []);
 });

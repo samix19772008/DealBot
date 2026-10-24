@@ -16,13 +16,16 @@ async function start() {
     loadModals(client);
     loadSelects(client);
     client.on('error', error => console.error('[CLIENT] Discord error:', error.code ?? error.name));
+    let stopOfferMaintenance = () => {};
     for (const signal of ['SIGINT', 'SIGTERM']) {
         process.once(signal, () => {
+            stopOfferMaintenance();
             client.destroy();
             require('./src/database/init').db.close();
         });
     }
     await client.login(process.env.DISCORD_TOKEN);
+    stopOfferMaintenance = require('./src/services/offerMaintenance').startOfferMaintenance();
     return client;
 }
 

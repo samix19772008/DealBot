@@ -1,5 +1,6 @@
 const { Events, PermissionFlagsBits } = require('discord.js');
 const { getEscrowById } = require('../database/escrowRepository');
+const { expirePendingOffers } = require('../database/offerPolicyRepository');
 
 const processingDeals = new Set();
 const DM_ACTIONS = new Set(['accept_escrow_', 'cancel_escrow_', 'cancel_reason_modal_']);
@@ -24,10 +25,17 @@ async function executeAction(interaction, handler) {
         if (!interaction.guildId) return report(interaction, 'Use this action inside your server.');
         return handler.execute(interaction, interaction.client);
     }
-    const escrow = getEscrowById(escrowId);
+    let escrow = getEscrowById(escrowId);
     if (!escrow) return report(interaction, 'This deal no longer exists.');
     if (interaction.guildId && interaction.guildId !== escrow.guild_id) {
         return report(interaction, 'This deal belongs to a different server.');
+    }
+    if (escrow.status === 'pending') {
+        expirePendingOffers({ guildId: escrow.guild_id });
+        escrow = getEscrowById(escrowId);
+    }
+    if (!escrow.channel_id && ['cancelled', 'refunded', 'completed'].includes(escrow.status)) {
+        return report(interaction, 'This request has ended or expired. Use /deal to start a new request.');
     }
     const isPendingOfferAction = DM_ACTIONS.has(handler.id) && escrow.status === 'pending';
     if (!interaction.guildId && !isPendingOfferAction) {

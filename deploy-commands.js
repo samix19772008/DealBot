@@ -9,24 +9,39 @@ function commandDefinitions() {
     return [...holder.commands.values()].map(command => command.data.toJSON());
 }
 
-async function deployCommands() {
-    const commands = commandDefinitions();
-    // Validate command definitions offline without using credentials or HTTP.
-    if (process.argv.includes('--dry-run')) {
-        console.log(`Validated ${commands.length} server command definitions: ${commands.map(command => command.name).join(', ')}`);
+function deploymentOptions(argv = process.argv.slice(2)) {
+    const unknown = argv.filter(argument => !['--dry-run', '--global'].includes(argument));
+    if (unknown.length) throw new Error('Use --dry-run to validate offline and --global to register for all installed servers.');
+    return { dryRun: argv.includes('--dry-run'), scope: argv.includes('--global') ? 'global' : 'guild' };
+}
+
+async function deployCommands({
+    argv = process.argv.slice(2), values = process.env, restClient,
+    definitions = commandDefinitions, log = console.log,
+} = {}) {
+    const { dryRun, scope } = deploymentOptions(argv);
+    const commands = definitions();
+    if (dryRun) {
+        log(`Validated ${commands.length} ${scope} command definitions: ${commands.map(command => command.name).join(', ')}`);
         return commands;
     }
-    requireConfiguration(['DISCORD_TOKEN', 'CLIENT_ID', 'GUILD_ID']);
-    const rest = new REST().setToken(process.env.DISCORD_TOKEN);
-    await rest.put(Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID), { body: commands });
-    console.log(`Registered ${commands.length} commands successfully.`);
+    requireConfiguration(scope === 'global'
+        ? ['DISCORD_TOKEN', 'CLIENT_ID']
+        : ['DISCORD_TOKEN', 'CLIENT_ID', 'GUILD_ID'], values);
+    const rest = restClient ?? new REST().setToken(values.DISCORD_TOKEN);
+    const route = scope === 'global'
+        ? Routes.applicationCommands(values.CLIENT_ID)
+        : Routes.applicationGuildCommands(values.CLIENT_ID, values.GUILD_ID);
+    await rest.put(route, { body: commands });
+    log(`Registered ${commands.length} ${scope} commands successfully.`);
     return commands;
 }
 
 if (require.main === module) deployCommands().catch(error => {
-    console.error('[COMMANDS]', error.message.startsWith('Missing configuration:') || error.message.includes('numeric ID')
-        ? error.message : (error.code ?? error.name));
+    const message = error.message || '';
+    console.error('[COMMANDS]', message.startsWith('Missing configuration:') || message.includes('numeric ID') ||
+        message.startsWith('Use --dry-run') ? message : (error.code ?? error.name));
     process.exitCode = 1;
 });
 
-module.exports = { commandDefinitions, deployCommands };
+module.exports = { commandDefinitions, deploymentOptions, deployCommands };

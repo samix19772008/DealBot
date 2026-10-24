@@ -21,7 +21,9 @@ module.exports = {
             .setMinValue(0.01).setMaxValue(9999999999.99).setRequired(true))
         .addStringOption(option => option
             .setName('unit').setDescription('For game payments: individual items or stacks of 64 (default: Each)')
-            .addChoices({ name: 'Each', value: 'each' }, { name: 'Stacks (64 each)', value: 'stacks' })),
+            .addChoices({ name: 'Each', value: 'each' }, { name: 'Stacks (64 each)', value: 'stacks' }))
+        .addBooleanOption(option => option
+            .setName('public-offer').setDescription('Allow the offer details in the hub if the seller cannot receive DMs')),
 
     async execute(interaction) {
         let details;
@@ -41,6 +43,7 @@ module.exports = {
         return sendDealOffer({
             interaction,
             sellerDiscordUser: interaction.options.getUser('seller'),
+            allowPublicOffer: interaction.options.getBoolean?.('public-offer') ?? false,
             ...details,
         });
     },

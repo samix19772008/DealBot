@@ -1,6 +1,7 @@
 const { formatPayment } = require('../../utils/payments');
 const { SlashCommandBuilder, EmbedBuilder, escapeMarkdown } = require('discord.js');
 const { getEscrowById, getEscrowEvents } = require('../../database/escrowRepository');
+const { expirePendingOffers } = require('../../database/offerPolicyRepository');
 const { isModerator } = require('../../utils/permissions');
 const { buildDealControls } = require('../../utils/dealControls');
 
@@ -18,6 +19,7 @@ module.exports = {
 
     async execute(interaction) {
         const reference = interaction.options.getString('reference')?.trim();
+        if (interaction.guildId) expirePendingOffers({ guildId: interaction.guildId });
         const escrow = reference && getEscrowById(reference);
         const participant = escrow && [escrow.buyer_discord_id, escrow.seller_discord_id].includes(interaction.user.id);
         const moderator = Boolean(interaction.guildId && isModerator(interaction.member, interaction.guildId));
@@ -61,6 +63,8 @@ module.exports = {
             : [];
         if (components.length) {
             embed.addFields({ name: 'Current Controls', value: 'Use the buttons below to continue from the saved deal status. Each action still requires the designated participant or authorized staff.' });
+        } else if (escrow.status !== 'pending' && !escrow.channel_id) {
+            embed.addFields({ name: 'Current Controls', value: 'This request ended before a private conversation was created.' });
         } else if (escrow.status !== 'pending' && !insideDealThread) {
             embed.addFields({ name: 'Current Controls', value: 'Run /deal-status inside the private thread to restore current controls.' });
         } else if (escrow.status === 'disputed') {

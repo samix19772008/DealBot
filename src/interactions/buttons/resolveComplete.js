@@ -1,7 +1,8 @@
 const { EmbedBuilder } = require('discord.js');
 const { completeEscrow } = require('../../database/escrowRepository');
 const { isModerator } = require('../../utils/permissions');
-const { deny, getScopedDeal, sendCloseControls, syncDealRanks } = require('../helpers');
+const { formatPayment } = require('../../utils/payments');
+const { deny, getScopedDeal, sendCloseControls, syncDealRanks, completionRewardText } = require('../helpers');
 
 module.exports = {
     id: 'resolve_complete_',
@@ -15,7 +16,11 @@ module.exports = {
             return deny(interaction, 'This dispute was already resolved. Trust points have not been awarded again.');
         }
         const embed = new EmbedBuilder().setColor(0x23A55A).setTitle('Dispute Resolved: Deal Completed')
-            .setDescription(`Moderator <@${interaction.user.id}> completed deal \`${escrow.transaction_uuid}\`. Both participants earned 5 trust points and one successful deal.`).setTimestamp();
+            .setDescription(`Moderator <@${interaction.user.id}> completed deal \`${escrow.transaction_uuid}\`.`)
+            .addFields(
+                { name: 'Agreed Payment', value: formatPayment(escrow) },
+                { name: 'Server Reputation', value: completionRewardText(escrow.id) },
+            ).setTimestamp();
         await interaction.editReply({ content: null, embeds: [embed], components: [] });
         await sendCloseControls(interaction, escrow);
         await syncDealRanks(interaction, escrow);

@@ -14,16 +14,14 @@ function getOrCreateUser(discordUser) {
     return findByDiscordId.get(discordUser.id);
 }
 
-/** Prefer flagScammerAndCancel for dispute decisions so flagging and closure are atomic. */
-function flagAsScammer(userId) {
-    return db.prepare(`UPDATE users SET is_scammer = 1, scam_flag_count = scam_flag_count + 1,
-        updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(userId).changes > 0;
+/** @deprecated Global reputation changes are disabled. Resolve a server-scoped dispute instead. */
+function flagAsScammer() {
+    throw new Error('Global scam flags are disabled. Use server-scoped flagScammerAndCancel.');
 }
 
-function setTrustScore(userId, score) {
-    if (!Number.isSafeInteger(score) || score < 0) throw new Error('Trust points must be a non-negative integer.');
-    return db.prepare('UPDATE users SET trust_score = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-        .run(score, userId).changes > 0;
+/** @deprecated Use setGuildRankOverride with an explicit server and staff identity. */
+function setTrustScore() {
+    throw new Error('Global trust overrides are disabled. Use setGuildRankOverride with a server ID.');
 }
 
 module.exports = { getOrCreateUser, flagAsScammer, setTrustScore };

@@ -94,3 +94,56 @@ CREATE TABLE IF NOT EXISTS escrow_thread_closures (
     UNIQUE (escrow_id, archive_timestamp)
 );
 CREATE INDEX IF NOT EXISTS idx_thread_closures_pending ON escrow_thread_closures(escrow_id, status, id);
+
+CREATE TABLE IF NOT EXISTS guild_user_profiles (
+    guild_id TEXT NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    earned_points INTEGER NOT NULL DEFAULT 0 CHECK (earned_points >= 0),
+    successful_deals INTEGER NOT NULL DEFAULT 0 CHECK (successful_deals >= 0),
+    failed_deals INTEGER NOT NULL DEFAULT 0 CHECK (failed_deals >= 0),
+    is_scammer INTEGER NOT NULL DEFAULT 0 CHECK (is_scammer IN (0, 1)),
+    scam_flag_count INTEGER NOT NULL DEFAULT 0 CHECK (scam_flag_count >= 0),
+    rank_override_points INTEGER CHECK (rank_override_points IS NULL OR rank_override_points >= 0),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (guild_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS escrow_reward_ledger (
+    escrow_id INTEGER PRIMARY KEY REFERENCES escrow_transactions(id) ON DELETE CASCADE,
+    guild_id TEXT NOT NULL,
+    buyer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    seller_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    pair_low_user_id INTEGER NOT NULL,
+    pair_high_user_id INTEGER NOT NULL,
+    awarded_points INTEGER NOT NULL CHECK (awarded_points IN (0, 5)),
+    completed_at DATETIME,
+    source TEXT NOT NULL CHECK (source IN ('completion', 'backfill'))
+);
+CREATE INDEX IF NOT EXISTS idx_reward_pair_time ON escrow_reward_ledger
+    (guild_id, pair_low_user_id, pair_high_user_id, completed_at);
+CREATE TABLE IF NOT EXISTS guild_scam_flag_ledger (
+    event_id INTEGER PRIMARY KEY REFERENCES escrow_events(id) ON DELETE CASCADE,
+    guild_id TEXT NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    escrow_id INTEGER NOT NULL REFERENCES escrow_transactions(id) ON DELETE CASCADE,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS guild_rank_override_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    actor_discord_id TEXT NOT NULL,
+    old_override_points INTEGER,
+    new_override_points INTEGER,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS guild_flag_review_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    actor_discord_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    old_is_scammer INTEGER NOT NULL,
+    new_is_scammer INTEGER NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

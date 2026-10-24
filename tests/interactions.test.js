@@ -5,7 +5,8 @@ const { EmbedBuilder, ChannelType } = require('discord.js');
 const { db } = require('../src/database/init');
 const repo = require('../src/database/escrowRepository');
 const { getOrCreateUser } = require('../src/database/userRepository');
-const { setModeratorRole, setHubChannel } = require('../src/database/guildSettingsRepository');
+const { getGuildReputation } = require('../src/database/reputationRepository');
+const { setModeratorRole, setHubChannel, setRankRole } = require('../src/database/guildSettingsRepository');
 const cancelModal = require('../src/interactions/modals/cancelReasonModal');
 const payment = require('../src/interactions/buttons/confirmPayment');
 const delivery = require('../src/interactions/buttons/confirmDelivery');
@@ -141,8 +142,12 @@ test('payment, delivery and receipt handlers complete the workflow and reward ex
     await receipt.execute(again);
     assert.match(content(again), /completed/);
     for (const u of [buyerDiscord, sellerDiscord]) {
-        assert.equal(getOrCreateUser(u).trust_score, 5);
-        assert.equal(getOrCreateUser(u).successful_deals, 1);
+        const identity = getOrCreateUser(u);
+        const reputation = getGuildReputation(guildId, identity.id);
+        assert.equal(reputation.trust_score, 5);
+        assert.equal(reputation.successful_deals, 1);
+        assert.equal(identity.trust_score, 0);
+        assert.equal(getGuildReputation('another-server', identity.id).successful_deals, 0);
     }
 });
 
@@ -210,8 +215,11 @@ test('scammer resolution cannot add duplicate flags using a stale button', async
     again.member.permissions.has = () => true;
     await scammer.execute(again);
     assert.match(content(again), /no open dispute/);
-    assert.equal(getOrCreateUser(sellerDiscord).scam_flag_count, 1);
-    assert.equal(getOrCreateUser(sellerDiscord).failed_deals, 1);
+    const identity = getOrCreateUser(sellerDiscord);
+    assert.equal(getGuildReputation(guildId, identity.id).scam_flag_count, 1);
+    assert.equal(getGuildReputation(guildId, identity.id).failed_deals, 1);
+    assert.equal(identity.is_scammer, 0);
+    assert.equal(getGuildReputation('another-server', identity.id).is_scammer, 0);
 });
 
 test('moderator completion uses disputed transition and awards no duplicate points', async () => {
@@ -223,8 +231,30 @@ test('moderator completion uses disputed transition and awards no duplicate poin
     again.member.permissions.has = () => true;
     await resolveComplete.execute(again);
     assert.equal(repo.getEscrowById(e.id).status, 'completed');
-    assert.equal(getOrCreateUser(buyerDiscord).successful_deals, 1);
-    assert.equal(getOrCreateUser(sellerDiscord).trust_score, 5);
+    assert.equal(getGuildReputation(guildId, getOrCreateUser(buyerDiscord).id).successful_deals, 1);
+    assert.equal(getGuildReputation(guildId, getOrCreateUser(sellerDiscord).id).trust_score, 5);
+});
+
+test('a new local scam decision immediately removes the member\'s cosmetic trust role', async () => {
+    const e = deal('disputed');
+    setRankRole(guildId, 'diamond', 'diamond-role');
+    const i = interaction(`scammer_pick_seller_${e.id}`, moderatorDiscord);
+    i.member.permissions.has = () => true;
+    const removed = [];
+    i.guild.members.fetchMe = async () => ({ permissions: { has: () => true }, roles: { highest: { position: 100 } } });
+    i.guild.roles.cache = new Map([['diamond-role', {
+        id: 'diamond-role', position: 1, editable: true, managed: false, permissions: { has: () => false },
+    }]]);
+    for (const id of [buyerDiscord.id, sellerDiscord.id]) {
+        const member = await i.guild.members.fetch(id);
+        member.guild = i.guild;
+        member.roles.remove = async roleId => { removed.push({ id, roleId }); member.roles.cache.delete(roleId); };
+    }
+    const member = await i.guild.members.fetch(sellerDiscord.id);
+    member.roles.cache.set('diamond-role', {});
+    await scammer.execute(i);
+    assert.deepEqual(removed, [{ id: sellerDiscord.id, roleId: 'diamond-role' }]);
+    assert.equal(getGuildReputation(guildId, getOrCreateUser(sellerDiscord).id).is_scammer, 1);
 });
 
 test('active deals cannot be closed by participant approval', async () => {

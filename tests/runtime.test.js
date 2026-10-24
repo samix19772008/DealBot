@@ -4,7 +4,9 @@ const { test, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { ChannelType, PermissionsBitField, PermissionFlagsBits } = require('discord.js');
 const { db } = require('../src/database/init');
-const { getOrCreateUser, flagAsScammer } = require('../src/database/userRepository');
+const { getOrCreateUser } = require('../src/database/userRepository');
+const { getGuildReputation } = require('../src/database/reputationRepository');
+const { startOfferMaintenance } = require('../src/services/offerMaintenance');
 const { setHubChannel } = require('../src/database/guildSettingsRepository');
 const repo = require('../src/database/escrowRepository');
 const router = require('../src/events/interactionCreate');
@@ -68,7 +70,7 @@ function offerFixture() {
 const allDeals = () => db.prepare('SELECT * FROM escrow_transactions ORDER BY id').all();
 
 beforeEach(() => {
-    db.exec('DELETE FROM escrow_events; DELETE FROM escrow_transactions; DELETE FROM users; DELETE FROM guild_settings;');
+    db.exec('DELETE FROM offer_cooldowns; DELETE FROM escrow_events; DELETE FROM escrow_transactions; DELETE FROM users; DELETE FROM guild_settings;');
     router.processingDeals.clear();
 });
 after(() => db.close());
@@ -215,8 +217,9 @@ test('a successfully delivered seller DM creates one pending offer with usable c
     assert.equal(fixture.sent.deferrals[0].ephemeral, true);
 });
 
-test('closed seller DMs fall back to one hub message and notify only the designated seller', async () => {
+test('explicit public-offer consent allows closed seller DMs to fall back to one hub message', async () => {
     const fixture = offerFixture();
+    fixture.allowPublicOffer = true;
     fixture.sellerDiscordUser.send = async () => { throw new Error('DMs closed'); };
     await sendDealOffer(fixture);
     assert.equal(allDeals().length, 1);
@@ -229,6 +232,7 @@ test('closed seller DMs fall back to one hub message and notify only the designa
 test('failure to deliver through both DM and hub cancels the offer and records why', async context => {
     context.mock.method(console, 'warn', () => {});
     const fixture = offerFixture();
+    fixture.allowPublicOffer = true;
     fixture.sellerDiscordUser.send = async () => { throw new Error('DMs closed'); };
     fixture.hub.send = async () => { throw new Error('Hub write failed'); };
     await sendDealOffer(fixture);
@@ -246,7 +250,12 @@ test('self deals, bot sellers, and flagged participants are rejected without sen
         const fixture = offerFixture();
         if (kind === 'self') fixture.sellerDiscordUser = fixture.interaction.user;
         if (kind === 'bot') fixture.sellerDiscordUser.bot = true;
-        if (kind === 'scammer') flagAsScammer(getOrCreateUser(fixture.sellerDiscordUser).id);
+        if (kind === 'scammer') {
+            const seller = getOrCreateUser(fixture.sellerDiscordUser);
+            getGuildReputation(fixture.interaction.guildId, seller.id);
+            db.prepare('UPDATE guild_user_profiles SET is_scammer = 1, scam_flag_count = 1 WHERE guild_id = ? AND user_id = ?')
+                .run(fixture.interaction.guildId, seller.id);
+        }
         await sendDealOffer(fixture);
         assert.equal(allDeals().length, 0, kind);
         assert.equal(fixture.sent.dm.length, 0, kind);
@@ -270,7 +279,9 @@ test('rapid repeat requests are rate limited without delivering duplicate offers
     await sendDealOffer(fixture);
     assert.equal(allDeals().length, 1);
     assert.equal(fixture.sent.dm.length, 1);
-    assert.match(fixture.sent.replies.at(-1).content, /wait 15 seconds/);
+    const match = fixture.sent.replies.at(-1).content.match(/wait (\d+) seconds/);
+    assert.ok(match);
+    assert.ok(Number(match[1]) > 0 && Number(match[1]) <= 15);
 });
 
 test('missing hub permissions and sellers outside the server never create undeliverable pending deals', async () => {
@@ -285,4 +296,99 @@ test('missing hub permissions and sellers outside the server never create undeli
     assert.equal(allDeals().length, 0);
     assert.match(missingSeller.sent.replies.at(-1).content, /seller must be a member/);
     assert.equal(missingSeller.sent.dm.length, 0);
+});
+
+test('legacy global flags and flags in another server do not block a local offer', async () => {
+    const fixture = offerFixture();
+    const seller = getOrCreateUser(fixture.sellerDiscordUser);
+    // Preserve a pre-upgrade flag as fixture evidence without invoking the disabled global mutation API.
+    db.prepare('UPDATE users SET is_scammer = 1, scam_flag_count = 1 WHERE id = ?').run(seller.id);
+    getGuildReputation('unrelated-server', seller.id);
+    db.prepare('UPDATE guild_user_profiles SET is_scammer = 1, scam_flag_count = 1 WHERE guild_id = ? AND user_id = ?')
+        .run('unrelated-server', seller.id);
+    await sendDealOffer(fixture);
+    assert.equal(allDeals().length, 1);
+    assert.equal(allDeals()[0].status, 'pending');
+    assert.equal(fixture.sent.dm.length, 1);
+    assert.equal(getGuildReputation(fixture.interaction.guildId, seller.id).is_scammer, 0);
+});
+
+test('cooldown survives reloading the offer module instead of resetting with process memory', async () => {
+    const fixture = offerFixture();
+    await sendDealOffer(fixture);
+    const modulePath = require.resolve('../src/utils/dealOffer');
+    delete require.cache[modulePath];
+    await require(modulePath).sendDealOffer(fixture);
+    assert.equal(allDeals().length, 1);
+    assert.equal(fixture.sent.dm.length, 1);
+    assert.match(fixture.sent.replies.at(-1).content, /wait \d+ seconds/);
+});
+
+test('creating an offer expires only stale unaccepted requests before checking the active limit', async () => {
+    const fixture = offerFixture();
+    const expired = [];
+    for (let i = 0; i < 10; i++) expired.push(seedDeal(fixture.interaction.guildId, fixture.interaction.user, fixture.sellerDiscordUser));
+    db.prepare("UPDATE escrow_transactions SET created_at = datetime('now', '-25 hours') WHERE guild_id = ?")
+        .run(fixture.interaction.guildId);
+    await sendDealOffer(fixture);
+    assert.equal(allDeals().length, 11);
+    assert.equal(allDeals().filter(row => row.status === 'pending').length, 1);
+    for (const old of expired) {
+        assert.equal(repo.getEscrowById(old.id).status, 'cancelled');
+        assert.equal(repo.getEscrowEvents(old.id)[0].event_type, 'offer_expired');
+    }
+    assert.equal(fixture.sent.dm.length, 1);
+});
+
+test('a concurrent request filling the final slots during Discord lookups cannot exceed the active cap', async () => {
+    const fixture = offerFixture();
+    fixture.interaction.guild.members.fetchMe = async () => {
+        for (let i = 0; i < 10; i++) seedDeal(fixture.interaction.guildId, fixture.interaction.user, fixture.sellerDiscordUser);
+        return fixture.botMember;
+    };
+    await sendDealOffer(fixture);
+    assert.equal(allDeals().length, 10);
+    assert.equal(fixture.sent.dm.length, 0);
+    assert.match(fixture.sent.replies.at(-1).content, /already have 10 active deals/);
+});
+
+test('offer maintenance starts explicitly, unreferences its timer, survives expiry errors, and stops cleanly', () => {
+    let attempts = 0;
+    let callback;
+    let cleared = 0;
+    let unreferenced = 0;
+    const errors = [];
+    const timer = { unref: () => { unreferenced++; } };
+    const stop = startOfferMaintenance({
+        expire: () => { attempts++; if (attempts === 1) throw new Error('Temporary database error'); },
+        schedule: (run, interval) => { callback = run; assert.equal(interval, 60_000); return timer; },
+        cancel: value => { assert.equal(value, timer); cleared++; },
+        onError: error => { errors.push(error.message); },
+    });
+    assert.equal(attempts, 1);
+    assert.equal(unreferenced, 1);
+    assert.deepEqual(errors, ['Temporary database error']);
+    callback();
+    assert.equal(attempts, 2);
+    stop();
+    stop();
+    callback();
+    assert.equal(attempts, 2);
+    assert.equal(cleared, 1);
+});
+
+test('seller DM failure cancels privately by default without exposing item or payment in the hub', async () => {
+    const fixture = offerFixture();
+    fixture.sellerDiscordUser.send = async () => { throw new Error('DMs closed'); };
+    await sendDealOffer(fixture);
+    const [deal] = allDeals();
+    assert.equal(deal.status, 'cancelled');
+    assert.equal(fixture.sent.hub.length, 0);
+    const event = repo.getEscrowEvents(deal.id)[0];
+    assert.equal(event.event_type, 'cancelled');
+    assert.equal(event.actor_discord_id, fixture.interaction.user.id);
+    assert.equal(event.reason, 'Seller DMs unavailable; public posting not permitted');
+    assert.match(fixture.sent.replies.at(-1).content, /cancelled/);
+    assert.match(fixture.sent.replies.at(-1).content, /public-offer:true/);
+    assert.equal(fixture.sent.deferrals[0].ephemeral, true);
 });

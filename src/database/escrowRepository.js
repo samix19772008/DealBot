@@ -1,6 +1,8 @@
 const { randomUUID } = require('crypto');
 const { db } = require('./init');
 const { parseAmount } = require('../utils/validation');
+const { getGuildReputation, recordCompletedEscrow, recordScamFlag, getEscrowReward } = require('./reputationRepository');
+const { expirePendingOffers, assertActiveDealLimit } = require('./offerPolicyRepository');
 
 const TERMINAL_STATUSES = ['completed', 'cancelled', 'refunded'];
 const ACTIVE_STATUSES = ['pending', 'awaiting_payment', 'funded', 'delivered', 'disputed'];
@@ -49,7 +51,7 @@ function validateDeal({ guildId, buyerId, sellerId, itemDescription, amount, cur
     for (const id of [buyerId, sellerId]) {
         const user = db.prepare('SELECT is_scammer FROM users WHERE id = ?').get(id);
         if (!user) throw new Error('Both participants must have a trust profile.');
-        if (user.is_scammer) throw new Error('Users flagged as scammers cannot open new deals.');
+        if (getGuildReputation(guildId, id).is_scammer) throw new Error('Users flagged as scammers in this server cannot open new deals.');
     }
     if (paymentUnit == null) return { amount, currency, paymentUnit: null };
     if (!['each', 'stacks'].includes(paymentUnit)) throw new Error('The payment unit must be each or stacks.');
@@ -60,7 +62,9 @@ function validateDeal({ guildId, buyerId, sellerId, itemDescription, amount, cur
 }
 
 const createDeal = db.transaction(params => {
+    expirePendingOffers({ guildId: params.guildId });
     const { amount, currency, paymentUnit } = validateDeal(params);
+    assertActiveDealLimit(params.guildId, Number(params.buyerId));
     const { guildId, buyerId, sellerId, itemDescription } = params;
     const result = db.prepare(`
         INSERT INTO escrow_transactions
@@ -96,7 +100,16 @@ const changeState = db.transaction((escrowId, expectedStatuses, nextStatus, type
 
 function acceptEscrow(escrowId, threadId, actorId) {
     if (!threadId) throw new Error('A private thread is required to accept a deal.');
-    return changeState.immediate(escrowId, ['pending'], 'awaiting_payment', 'accepted', actorId, { channelId: threadId });
+    return db.transaction(() => {
+        const original = getEscrowById(escrowId);
+        if (!original) return false;
+        // The offer may cross its acceptance deadline while Discord prepares
+        // the private thread. Recheck expiry inside the final write transaction.
+        expirePendingOffers({ guildId: original.guild_id });
+        const escrow = getEscrowById(original.id);
+        if (escrow.status !== 'pending' || [escrow.buyer_id, escrow.seller_id].some(userId => getGuildReputation(escrow.guild_id, userId).is_scammer)) return false;
+        return changeState(escrow.id, ['pending'], 'awaiting_payment', 'accepted', actorId, { channelId: threadId });
+    }).immediate();
 }
 
 function cancelEscrow(escrowId, { expectedStatus = 'pending', actorId, reason } = {}) {
@@ -117,10 +130,9 @@ const finishDeal = db.transaction((escrowId, actorId, expectedStatus) => {
     const escrow = getEscrowById(escrowId);
     if (!escrow || escrow.status !== expectedStatus) return false;
     if (!changeState(escrow.id, [expectedStatus], 'completed', 'completed', actorId)) return false;
-    // Use the stored participants, never caller-supplied IDs. Reward exactly once.
-    db.prepare(`UPDATE users SET successful_deals = successful_deals + 1,
-        trust_score = trust_score + 5, updated_at = CURRENT_TIMESTAMP WHERE id IN (?, ?)`)
-        .run(escrow.buyer_id, escrow.seller_id);
+    // The server-local ledger awards one eligible pair reward in a rolling
+    // 24-hour window. Every completed deal still counts once in local history.
+    recordCompletedEscrow(escrow.id);
     return true;
 });
 
@@ -141,8 +153,8 @@ const resolveScam = db.transaction((escrowId, userId, actorId) => {
     if (!escrow || escrow.status !== 'disputed' || ![escrow.buyer_id, escrow.seller_id].includes(Number(userId))) return false;
     if (!changeState(escrow.id, ['disputed'], 'cancelled', 'scammer_flagged', actorId,
         { reason: `Flagged participant: ${Number(userId) === escrow.buyer_id ? escrow.buyer_discord_id : escrow.seller_discord_id}` })) return false;
-    db.prepare(`UPDATE users SET is_scammer = 1, scam_flag_count = scam_flag_count + 1,
-        failed_deals = failed_deals + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(userId);
+    const eventId = db.prepare("SELECT id FROM escrow_events WHERE escrow_id = ? AND event_type = 'scammer_flagged' ORDER BY id DESC LIMIT 1").get(escrow.id).id;
+    recordScamFlag(escrow.id, Number(userId), eventId);
     return true;
 });
 
@@ -191,5 +203,5 @@ function getEscrowEvents(escrowId, limit = 10) {
 module.exports = {
     createEscrow, getEscrowById, getEscrowByChannelId, acceptEscrow, cancelEscrow,
     markAsFunded, markAsDelivered, completeEscrow, markAsDisputed, flagScammerAndCancel,
-    approveBuyerClose, approveSellerClose, listEscrowsForUser, getEscrowEvents,
+    approveBuyerClose, approveSellerClose, listEscrowsForUser, getEscrowEvents, getEscrowReward,
 };

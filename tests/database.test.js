@@ -10,6 +10,7 @@ const { db, initDatabase } = require('../src/database/init');
 const users = require('../src/database/userRepository');
 const settings = require('../src/database/guildSettingsRepository');
 const escrows = require('../src/database/escrowRepository');
+const { getGuildReputation } = require('../src/database/reputationRepository');
 let sequence = 0;
 function user(name = 'Trader') {
     sequence += 1;
@@ -22,7 +23,7 @@ function fixture(guildId = 'guild-a') {
         itemDescription: 'A digital item', amount: 12.25, currency: 'USD' });
     return { buyer, seller, deal };
 }
-function freshUser(row) { return db.prepare('SELECT * FROM users WHERE id = ?').get(row.id); }
+function freshUser(row, guildId = 'guild-a') { return getGuildReputation(guildId, row.id); }
 
 test('fresh initialization is repeatable and creates every supported server setting', () => {
     initDatabase();
@@ -84,6 +85,7 @@ test('legacy migration preserves settings, profiles and deals across two initial
         assert.equal(deal.payment_unit, null);
         assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'escrow_thread_closures'").get());
         assert.equal(db.prepare('SELECT trust_score FROM users WHERE id = 1').get().trust_score, 15);
+        assert.equal(require('./src/database/reputationRepository').getGuildReputation('old-guild', 1).earned_points, 0);
         db.close();
     `;
     try {
@@ -167,8 +169,8 @@ test('a database failure rolls completion and all trust rewards back together', 
     escrows.acceptEscrow(deal.id, 'rollback-thread');
     escrows.markAsFunded(deal.id);
     escrows.markAsDelivered(deal.id);
-    db.exec(`CREATE TEMP TRIGGER fail_reward BEFORE UPDATE OF successful_deals ON users
-        WHEN NEW.id = ${seller.id} BEGIN SELECT RAISE(ABORT, 'Simulated reward failure'); END;`);
+    db.exec(`CREATE TEMP TRIGGER fail_reward BEFORE UPDATE OF successful_deals ON guild_user_profiles
+        WHEN NEW.user_id = ${seller.id} BEGIN SELECT RAISE(ABORT, 'Simulated reward failure'); END;`);
     try {
         assert.throws(() => escrows.completeEscrow(deal.id, buyer.id, seller.id), /Simulated reward failure/);
         assert.equal(escrows.getEscrowById(deal.id).status, 'delivered');
@@ -260,6 +262,35 @@ test('market-unit validation refuses unsupported units, money stacks, and fracti
     const legacy = escrows.createEscrow({ ...defaults, amount: 2.5, currency: 'Old game coins', paymentUnit: null });
     assert.equal(legacy.amount, 2.5);
     assert.equal(legacy.payment_unit, null);
+});
+
+
+test('final acceptance expires an overdue pending offer without assigning its prepared channel', () => {
+    const { deal, seller } = fixture('expiry-at-accept');
+    db.prepare("UPDATE escrow_transactions SET created_at = datetime('now', '-25 hours') WHERE id = ?").run(deal.id);
+    assert.equal(escrows.acceptEscrow(deal.id, 'unused-new-thread', seller.discord_id), false);
+    const expired = escrows.getEscrowById(deal.id);
+    assert.equal(expired.status, 'cancelled');
+    assert.equal(expired.channel_id, null);
+    const event = escrows.getEscrowEvents(deal.id)[0];
+    assert.equal(event.event_type, 'offer_expired');
+    assert.equal(event.to_status, 'cancelled');
+    assert.equal(escrows.acceptEscrow(deal.id, 'another-unused-thread', seller.discord_id), false);
+    assert.equal(escrows.getEscrowEvents(deal.id).filter(row => row.event_type === 'offer_expired').length, 1);
+});
+
+test('acceptance expiry checks preserve existing accepted and paid deals regardless of age', () => {
+    for (const status of ['awaiting_payment', 'funded']) {
+        const { deal, buyer, seller } = fixture(`old-${status}`);
+        assert.equal(escrows.acceptEscrow(deal.id, `original-${status}`, seller.discord_id), true);
+        if (status === 'funded') assert.equal(escrows.markAsFunded(deal.id, buyer.discord_id), true);
+        db.prepare("UPDATE escrow_transactions SET created_at = datetime('now', '-25 hours') WHERE id = ?").run(deal.id);
+        assert.equal(escrows.acceptEscrow(deal.id, 'unused-thread', seller.discord_id), false);
+        const unchanged = escrows.getEscrowById(deal.id);
+        assert.equal(unchanged.status, status);
+        assert.equal(unchanged.channel_id, `original-${status}`);
+        assert.equal(escrows.getEscrowEvents(deal.id).some(row => row.event_type === 'offer_expired'), false);
+    }
 });
 
 test.after(() => db.close());

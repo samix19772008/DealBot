@@ -1,6 +1,8 @@
 const { PermissionFlagsBits } = require('discord.js');
 const { getGuildSettings } = require('../database/guildSettingsRepository');
 const { getRankForScore, RANKS } = require('./ranks');
+const { getOrCreateUser } = require('../database/userRepository');
+const { getGuildReputation } = require('../database/reputationRepository');
 
 // Trust ranks are cosmetic. Never grant moderation or server-management powers.
 const DANGEROUS_RANK_PERMISSIONS = [
@@ -35,8 +37,8 @@ function isSafeRankRole(role, botMember, guildId) {
 }
 
 /** Sync cosmetic rank roles only when both permissions and hierarchy allow it. */
-async function syncMemberRankRole(member, trustScore) {
-    if (!member?.guild) return false;
+async function syncMemberRankRole(member) {
+    if (!member?.guild || !member.user) return false;
     const settings = getGuildSettings(member.guild.id);
     if (!settings) return true;
 
@@ -49,8 +51,12 @@ async function syncMemberRankRole(member, trustScore) {
             console.warn('[ROLE SYNC] Member is above the bot in the role hierarchy.');
             return false;
         }
-        const currentRank = getRankForScore(trustScore);
-        const targetRoleId = settings[`${currentRank.key}_role_id`];
+        // Resolve the score here so a caller cannot accidentally apply another server's score.
+        const identity = getOrCreateUser(member.user);
+        const reputation = getGuildReputation(member.guild.id, identity.id);
+        const currentRank = getRankForScore(reputation.trust_score);
+        // A local scam flag suppresses all cosmetic trust ranks in this server.
+        const targetRoleId = reputation.is_scammer ? null : settings[`${currentRank.key}_role_id`];
         const targetRole = targetRoleId ? member.guild.roles.cache.get(targetRoleId) : null;
         if (targetRoleId && !isSafeRankRole(targetRole, botMember, member.guild.id)) {
             console.warn('[ROLE SYNC] Skipped an unsafe or unmanageable target rank role.');

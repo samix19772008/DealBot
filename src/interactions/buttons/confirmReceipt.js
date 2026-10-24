@@ -1,6 +1,7 @@
 const { completeEscrow } = require('../../database/escrowRepository');
 const { buildDealEmbed } = require('../../utils/embedTemplate');
-const { deny, getScopedDeal, confirmedEmbed, sendCloseControls, syncDealRanks } = require('../helpers');
+const { formatPayment } = require('../../utils/payments');
+const { deny, getScopedDeal, confirmedEmbed, sendCloseControls, syncDealRanks, completionRewardText } = require('../helpers');
 
 module.exports = {
     id: 'confirm_receipt_',
@@ -19,8 +20,8 @@ module.exports = {
             rows: [
                 { label: 'Buyer', value: `<@${escrow.buyer_discord_id}>` },
                 { label: 'Seller', value: `<@${escrow.seller_discord_id}>` },
-                { label: 'Amount', value: `${escrow.amount.toLocaleString('en-US')} ${escrow.currency}` },
-                { label: 'Trust Reward', value: 'Both participants earned 5 trust points and one successful deal.' },
+                { label: 'Agreed Payment', value: formatPayment(escrow) },
+                { label: 'Server Reputation', value: completionRewardText(escrow.id) },
             ],
         });
         await interaction.channel.send({ embeds: [embed] });

@@ -1,6 +1,5 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
-const { getEscrowById } = require('../database/escrowRepository');
-const { getOrCreateUser } = require('../database/userRepository');
+const { getEscrowById, getEscrowReward } = require('../database/escrowRepository');
 const { syncMemberRankRole } = require('../utils/roleSync');
 
 async function deny(interaction, content) {
@@ -65,11 +64,20 @@ async function syncDealRanks(interaction, escrow) {
     for (const id of [escrow.buyer_discord_id, escrow.seller_discord_id]) {
         try {
             const member = await interaction.guild.members.fetch(id);
-            await syncMemberRankRole(member, getOrCreateUser(member.user).trust_score);
+            await syncMemberRankRole(member);
         } catch (error) {
             console.warn(`[ROLE SYNC] Could not update rank for ${id}:`, error.message);
         }
     }
 }
 
-module.exports = { deny, getScopedDeal, isParticipant, confirmedEmbed, closeButtons, sendCloseControls, syncDealRanks };
+function completionRewardText(escrowId) {
+    const reward = getEscrowReward(escrowId);
+    if (!reward) return 'The deal is completed. Use /profile to view the reputation recorded in this server.';
+    if (reward.awarded_points > 0) {
+        return `Both participants earned ${reward.awarded_points} trust points and one successful deal in this server.`;
+    }
+    return 'Both participants recorded one successful deal in this server. No trust points were added for this deal. The same pair can earn points only once per 24 hours in this server.';
+}
+
+module.exports = { deny, getScopedDeal, isParticipant, confirmedEmbed, closeButtons, sendCloseControls, syncDealRanks, completionRewardText };

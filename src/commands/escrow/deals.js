@@ -1,6 +1,7 @@
 const { formatPayment } = require('../../utils/payments');
 const { SlashCommandBuilder, EmbedBuilder, escapeMarkdown } = require('discord.js');
 const { listEscrowsForUser } = require('../../database/escrowRepository');
+const { expirePendingOffers } = require('../../database/offerPolicyRepository');
 
 const PAGE_SIZE = 6;
 const displayStatus = status => status.replaceAll('_', ' ');
@@ -25,6 +26,7 @@ module.exports = {
         if (!Number.isInteger(page) || page < 1 || page > 1000 || !['active', 'all'].includes(status)) {
             return interaction.reply({ content: 'Choose a page between 1 and 1000 and a valid status filter.', ephemeral: true });
         }
+        expirePendingOffers({ guildId: interaction.guildId });
         const deals = listEscrowsForUser(interaction.guildId, interaction.user.id, {
             status, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE,
         });

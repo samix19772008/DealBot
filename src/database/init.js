@@ -39,7 +39,8 @@ function initDatabase() {
         }
         // English is now the sole bot language, including servers configured before this release.
         db.prepare("UPDATE guild_settings SET language = 'en' WHERE language IS NULL OR language != 'en'").run();
-    })();
+        require('./reputationRepository').backfillGuildReputation(db);
+    }).immediate();
     return db;
 }
 

@@ -1,13 +1,14 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits } = require('discord.js');
 const { buildDealEmbed } = require('./embedTemplate');
 const { getOrCreateUser } = require('../database/userRepository');
-const { createEscrow, cancelEscrow, listEscrowsForUser } = require('../database/escrowRepository');
+const { createEscrow, cancelEscrow } = require('../database/escrowRepository');
 const { getGuildSettings } = require('../database/guildSettingsRepository');
+const { getGuildReputation } = require('../database/reputationRepository');
+const { acquireOfferCooldown, expirePendingOffers, assertActiveDealLimit } = require('../database/offerPolicyRepository');
 const { validateDealInput } = require('./validation');
 const { t } = require('./i18n');
 const { resolvePayment, formatPayment } = require('./payments');
 
-const offerCooldowns = new Map();
 const REQUIRED_HUB_PERMISSIONS = [
     PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages,
     PermissionFlagsBits.CreatePrivateThreads, PermissionFlagsBits.SendMessagesInThreads,
@@ -20,7 +21,7 @@ async function respond(interaction, payload) {
     return interaction.reply({ ...payload, ephemeral: true });
 }
 
-async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, amount, currency = 'USD', paymentUnit = 'each' }) {
+async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, amount, currency = 'USD', paymentUnit = 'each', allowPublicOffer = false }) {
     if (!interaction.guildId || !interaction.guild) {
         return respond(interaction, { content: 'Start a deal from inside your server.' });
     }
@@ -36,28 +37,27 @@ async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, 
     }
     catch (error) { return respond(interaction, { content: error.message }); }
 
+    expirePendingOffers({ guildId: interaction.guildId });
     const buyer = getOrCreateUser(interaction.user);
     const seller = getOrCreateUser(sellerDiscordUser);
-    if (buyer.is_scammer || seller.is_scammer) {
-        return respond(interaction, { content: 'A participant is flagged as a scammer. A new deal cannot be opened.' });
+    const buyerReputation = getGuildReputation(interaction.guildId, buyer.id);
+    const sellerReputation = getGuildReputation(interaction.guildId, seller.id);
+    if (buyerReputation.is_scammer || sellerReputation.is_scammer) {
+        return respond(interaction, { content: 'A participant is flagged as a scammer in this server. A new deal cannot be opened.' });
     }
     const settings = getGuildSettings(interaction.guildId);
     if (!settings?.hub_channel_id) {
         return respond(interaction, { content: t('errors.hubNotConfigured', 'en') });
     }
-    if (listEscrowsForUser(interaction.guildId, interaction.user.id, { limit: 10 }).length >= 10) {
-        return respond(interaction, { content: 'You already have 10 active deals. Complete or cancel an existing deal before opening another.' });
+    try { assertActiveDealLimit(interaction.guildId, buyer.id); }
+    catch (error) {
+        if (error.code === 'ACTIVE_DEAL_LIMIT') return respond(interaction, { content: error.message });
+        throw error;
     }
 
-    const key = `${interaction.guildId}:${interaction.user.id}`;
-    const now = Date.now();
-    if (now - (offerCooldowns.get(key) ?? 0) < 15000) {
-        return respond(interaction, { content: 'Please wait 15 seconds before sending another deal request.' });
-    }
-    offerCooldowns.set(key, now);
-    // Keep rate-limit memory bounded without an interval that keeps tests alive.
-    for (const [entry, timestamp] of offerCooldowns) {
-        if (now - timestamp >= 15000) offerCooldowns.delete(entry);
+    const cooldown = acquireOfferCooldown(interaction.guildId, interaction.user.id);
+    if (!cooldown.allowed) {
+        return respond(interaction, { content: `Please wait ${Math.ceil(cooldown.retryAfterMs / 1000)} seconds before sending another deal request.` });
     }
 
     if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ ephemeral: true });
@@ -82,9 +82,17 @@ async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, 
         return respond(interaction, { content: 'You need access to the escrow hub before opening a deal.' });
     }
 
-    const escrow = createEscrow({
-        guildId: interaction.guildId, buyerId: buyer.id, sellerId: seller.id, ...details,
-    });
+    let escrow;
+    try {
+        // The repository repeats the cap check in its insertion transaction: another
+        // request may have filled the final slot while Discord lookups were pending.
+        escrow = createEscrow({
+            guildId: interaction.guildId, buyerId: buyer.id, sellerId: seller.id, ...details,
+        });
+    } catch (error) {
+        if (error.code === 'ACTIVE_DEAL_LIMIT') return respond(interaction, { content: error.message });
+        throw error;
+    }
     const embed = buildDealEmbed({
         title: 'New Escrow Request', referenceId: escrow.transaction_uuid, status: 'pending',
         rows: [
@@ -93,7 +101,7 @@ async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, 
             { label: 'Item', value: details.itemDescription },
             { label: 'Agreed Payment', value: formatPayment(details) },
         ],
-        footerNote: 'Payment is arranged by participants. DealBot does not hold or verify funds.',
+        footerNote: 'Unaccepted offers expire after 24 hours. DealBot does not hold or verify funds.',
     });
     const buttons = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`accept_escrow_${escrow.id}`).setLabel('Accept Deal').setStyle(ButtonStyle.Success).setEmoji('✅'),
@@ -105,6 +113,12 @@ async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, 
             embeds: [embed], components: [buttons], allowedMentions: { parse: [] },
         });
     } catch {
+        if (allowPublicOffer !== true) {
+            cancelEscrow(escrow.id, { actorId: interaction.user.id, reason: 'Seller DMs unavailable; public posting not permitted' });
+            return respond(interaction, {
+                content: 'The seller could not receive a DM, so this request was cancelled. Ask the seller to enable DMs, or agree together to share the item and payment details in the hub before using `/deal public-offer:true`.',
+            });
+        }
         try {
             const message = await hub.send({
                 content: `<@${sellerDiscordUser.id}>, a deal request is waiting for your response. Your DMs are closed.`,
