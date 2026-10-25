@@ -12,9 +12,11 @@ DealBot records participant confirmations. It does **not** hold, transfer, verif
 4. Use Node.js 24 LTS, or Node.js 22.16 or newer. Run `npm ci` to install dependencies for your operating system. Do not reuse a copied `node_modules` folder.
 5. Enable the Discord intents below, run `npm run commands:deploy` to refresh the server commands, then `npm start`.
 
-Startup automatically adds missing settings, rank-role, close-approval, payment-unit, activity-log, and closure-record tables/columns. Existing profiles, deals, and settings remain. Old deals keep their literal amounts and currencies: the upgrade never guesses whether an old number meant stacks. The old `add-*-columns.js` entry points still work, but manual migrations are unnecessary. New activity events are recorded from this version onward; old events are not reconstructed.
+Startup automatically adds missing settings, rank-role, close-approval, payment-unit, activity-log, closure-record, and listing-request tables/columns. Existing profiles, deals, and settings remain. Old deals keep their literal amounts and currencies: the upgrade never guesses whether an old number meant stacks. The old `add-*-columns.js` entry points still work, but manual migrations are unnecessary. New activity events are recorded from this version onward; old events are not reconstructed.
 
 **Version 1.2 changes the `/deal` options. Run `npm run commands:deploy` after updating**, so Discord replaces the old free-text `price` field with the new payment choices.
+
+**Version 1.4 adds fixed prices for market-post requests.** Ask sellers to follow [the listing format](docs/LISTING_FORMAT.md), and refresh commands to add `/listing-format`. Buyers choose only a listed payment method and a product quantity; DealBot calculates the total. Old payment-entry menus must be reopened. Existing deals retain their agreed terms, and the separate `/deal` command remains available for negotiated offers.
 
 ## Version 1.3 reputation migration
 
@@ -60,8 +62,9 @@ As a server administrator, run `/set-hub-channel` and `/set-mod-role`. Optionall
 
 | Command | Use |
 | --- | --- |
-| `/deal seller item payment amount unit` | Choose one listed payment method and enter the total agreed payment |
-| Message → Apps → Request a Deal | Choose a payment method privately, then enter the amount; the listing supplies the seller and item |
+| `/deal seller item payment amount unit` | Send a negotiated offer with a manually entered total payment |
+| Message → Apps → Request a Deal | Choose only a method in the formatted listing, then a product quantity; the total is calculated |
+| `/listing-format` | Privately show sellers a copyable fixed-price post template and examples |
 | `/deals status page` | Privately list your active or all deals in the current server |
 | `/deal-status reference` | Privately inspect a reference or numeric deal ID and recent activity |
 | `/profile user` | Show earned points, staff rank overrides, local flags, and deal history in this server |
@@ -80,18 +83,36 @@ Commands and deal listings are server-only. A deal's private status is visible t
 
 ## Buying from a market post
 
-The easiest route is to right-click the seller's post and choose **Apps → Request a Deal**. Choose **Money**, **Golds**, **Redblocks**, or **Sky 1 Notchs** from the private menu. Enter the total payment shown in the post. For a game currency, leave the unit blank for individual items or enter `stacks` for stacks of 64. Text listings and embed-only listings are supported. Source-message access and private-thread membership are checked again when the form is submitted.
+Sellers can run `/listing-format` to get this copyable template:
 
-Alternatively, use `/deal`. These are four separate example offers for the same Menace Cape listing:
+```text
+Item: Menace Cape
+Money: $2.00
+Golds: 33
+Redblocks: 20 stacks
+Sky 1 Notchs: 20
+```
+
+Each price buys **one product**. Delete the lines for payment methods the seller does not accept. For example, a post containing only `Item: Menace Cape` and `Golds: 33` allows only Golds. These are alternative prices, not currency exchange rates. Sellers should put one product in each message, use the field labels shown, and leave other prose out of the listing text. Images may accompany the text, but image-only and embed-only prices are not read. The whole listing may optionally be placed inside a code block. See [the full format and examples](docs/LISTING_FORMAT.md).
+
+The buyer right-clicks the seller's message and chooses **Apps → Request a Deal**. The private menu shows only its listed methods and their per-product prices. The next form asks for a whole product quantity from **1 to 999**. The buyer cannot edit the price or payment unit: 33 Golds × 2 products is 66 Golds; $2.00 × 2 is $4.00; 20 stacks × 2 is 40 stacks. Totals must still fit the payment limits below. Money uses US dollars with at most two decimal places; game payments use whole items or whole stacks of 64.
+
+Selections belong to the buyer and server, survive a bot restart, and expire after 15 minutes. Source-message access and private-thread membership are checked again when the form is submitted. Editing or deleting the source message requires the buyer to reopen the request. Invalid or ambiguous listing text is rejected with format guidance instead of a guessed price. Once the deal request is created, its product quantity, unit price, total, and source reference are preserved; later listing edits do not rewrite that request. This does not reserve stock or verify inventory.
+
+### Negotiated offers with /deal
+
+`/deal` remains a separate manual route for a price agreed directly with the seller. **It does not read a market post or enforce that post's fixed prices.** Servers requiring every purchase to follow published prices should instruct buyers to use **Request a Deal**, and sellers should check and decline unsuitable manual offers.
+
+These are four separate example negotiated offers:
 
 ```text
 /deal seller:@Seller item:Menace Cape payment:Money amount:2
-/deal seller:@Seller item:Menace Cape payment:Golds amount:45
+/deal seller:@Seller item:Menace Cape payment:Golds amount:33
 /deal seller:@Seller item:Menace Cape payment:Redblocks amount:20 unit:Stacks
 /deal seller:@Seller item:Menace Cape payment:Sky 1 Notchs amount:20
 ```
 
-Pick **one** option that the seller accepts. These listing prices are not currency exchange rates; DealBot does not convert or infer them. **Amount means the total agreed payment, not the quantity of the item being bought.** Money is in US dollars with up to two decimal places. Game payments use whole items or whole stacks. `20` with `Redblocks` and `Stacks` is shown consistently as **20 stacks of Redblocks (1,280 blocks)**; the stored amount remains 20 stacks.
+Pick **one** option that the seller accepts. For `/deal`, **amount means the total agreed payment, not the product quantity**. DealBot does not convert currencies or infer a listing price. `20` with `Redblocks` and `Stacks` is shown consistently as **20 stacks of Redblocks (1,280 blocks)**; the stored amount remains 20 stacks.
 
 ## Deal workflow and recovery
 
@@ -155,7 +176,7 @@ npm run db:init
 npm run dev
 ```
 
-Tests use isolated temporary or in-memory databases and simulated Discord interactions. They do not log in, publish commands, or send messages. Coverage includes legacy migrations, scoped reputation, anti-farming rewards, audited decisions, atomic state changes, rollback, concurrent-process caps and cooldowns, privacy defaults, request expiry, permissions, setup/stats, command deployment routes, online backup/restore integrity, payment validation, transcript generation, and duplicate-delivery prevention. The check command verifies JavaScript syntax, JSON, and the absence of Arabic text in built-in source strings.
+Tests use isolated temporary or in-memory databases and simulated Discord interactions. They do not log in, publish commands, or send messages. Coverage includes legacy migrations, scoped reputation, anti-farming rewards, audited decisions, atomic state changes, rollback, concurrent-process caps and cooldowns, privacy defaults, request expiry, permissions, setup/stats, command deployment routes, online backup/restore integrity, payment validation, fixed listing prices and quantities, transcript generation, and duplicate-delivery prevention. The check command verifies JavaScript syntax, JSON, and the absence of Arabic text in built-in source strings.
 
 `commands:validate` serializes and validates command definitions without credentials or HTTP. Only `commands:deploy` registers them. `db:init` applies idempotent migrations. For native SQLite build tools on Linux, install Python, Make, and a C++ compiler if your Node version has no prebuilt module.
 

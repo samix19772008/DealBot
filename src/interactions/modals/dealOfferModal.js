@@ -1,40 +1,49 @@
 const { sendDealOffer } = require('../../utils/dealOffer');
-const { PAYMENT_METHODS, resolvePayment } = require('../../utils/payments');
+const { getListingQuote } = require('../../database/listingRepository');
+const { parseListing, listingFingerprint } = require('../../utils/listings');
 const { getAccessibleSourceMessage } = require('../selects/paymentMethod');
 const { deny } = require('../helpers');
-const { boundedText } = require('../../utils/validation');
 
 module.exports = {
     id: 'deal_offer_modal_',
     async execute(interaction) {
-        const match = interaction.customId.match(/^deal_offer_modal_([a-z0-9]+)_(\d{1,20})_(\d{1,20})_(\d{1,20})$/);
+        const match = interaction.customId.match(/^deal_offer_modal_v2_([a-f0-9]{32})_([a-z0-9]+)$/);
         if (!interaction.guildId || !match) {
             return deny(interaction, 'This deal form has expired. Reopen Request a Deal on the source message and choose a payment method.');
         }
-        const [, methodKey, channelId, messageId, buyerId] = match;
-        if (buyerId !== interaction.user.id) return deny(interaction, 'Only the person who opened this deal request can submit it.');
-        const method = PAYMENT_METHODS.find(candidate => candidate.key === methodKey);
-        if (!method) return deny(interaction, 'The payment method is invalid. Reopen Request a Deal and choose a payment method.');
-        let payment;
+        const [, token, methodKey] = match;
+        let quote;
         try {
-            payment = resolvePayment({
-                method: method.key,
-                amount: interaction.fields.getTextInputValue('amount'),
-                unit: method.key === 'money' ? 'each' : interaction.fields.getTextInputValue('payment_unit'),
+            const quantity = interaction.fields.getTextInputValue('quantity');
+            if (!/^[1-9]\d{0,2}$/.test(quantity)) throw new Error('Enter a whole product quantity from 1 to 999.');
+            quote = getListingQuote(token, {
+                guildId: interaction.guildId,
+                buyerDiscordId: interaction.user.id,
+                methodKey,
+                quantity: Number(quantity),
             });
         } catch (error) {
             return deny(interaction, error.message);
         }
 
         await interaction.deferReply({ ephemeral: true });
-        const source = await getAccessibleSourceMessage(interaction, channelId, messageId);
+        const { session, payment, itemDescription } = quote;
+        const source = await getAccessibleSourceMessage(interaction, session.channel_id, session.message_id);
         if (source.error) return interaction.editReply({ content: source.error, allowedMentions: { parse: [] } });
         const targetMessage = source.message;
-        const embedText = (targetMessage.embeds ?? [])
-            .map(embed => [embed.title, embed.description].filter(value => typeof value === 'string' && value.trim()).join('\n'))
-            .filter(Boolean).join('\n\n');
-        const listingText = targetMessage.content?.trim() || embedText.trim();
-        const itemDescription = boundedText(listingText || `Message attachment: ${targetMessage.url}`, 1000);
-        await sendDealOffer({ interaction, sellerDiscordUser: targetMessage.author, itemDescription, ...payment });
+        let unchanged = targetMessage.author.id === session.seller_discord_id &&
+            listingFingerprint(targetMessage) === session.source_fingerprint;
+        try { unchanged = unchanged && JSON.stringify(parseListing(targetMessage.content)) === JSON.stringify(session.listing); }
+        catch { unchanged = false; }
+        if (!unchanged) {
+            return interaction.editReply({
+                content: 'The source post changed after this request was opened. Reopen Request a Deal to review the current prices.',
+                allowedMentions: { parse: [] },
+            });
+        }
+        await sendDealOffer({
+            interaction, sellerDiscordUser: targetMessage.author, itemDescription, ...payment,
+            listingRequest: { token, methodKey, quantity: payment.quantity },
+        });
     },
 };

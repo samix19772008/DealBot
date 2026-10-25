@@ -383,17 +383,16 @@ test('accepted private thread survives a later offer-update failure', async () =
     assert.match(content(i), new RegExp(channelId));
 });
 
-test('deal offer modal rejects a malformed amount before fetching messages', async () => {
+test('legacy amount-entry forms expire before reading their fields or the source', async () => {
     const i = interaction('deal_offer_modal_money_300000000000000001_400000000000000001_100000000000000001');
-    i.fields.getTextInputValue = name => name === 'amount' ? '25invalid' : 'USD';
+    i.fields.getTextInputValue = () => assert.fail('An old form must not accept a replacement price');
     await offerModal.execute(i);
-    assert.match(content(i), /positive amount/);
+    assert.match(content(i), /expired.*Reopen Request a Deal/);
     assert.equal(i.deferred, false);
 });
 
-test('deal offer modal cannot read a private thread after membership is removed', async () => {
+test('source access checks cannot read a private thread after membership is removed', async () => {
     const i = interaction('deal_offer_modal_money_300000000000000001_400000000000000001_100000000000000001');
-    i.fields.getTextInputValue = name => name === 'amount' ? '25.50' : 'USD';
     let reads = 0;
     i.guild.channels = { fetch: async () => ({
         guildId, type: ChannelType.PrivateThread, isTextBased: () => true,
@@ -401,7 +400,7 @@ test('deal offer modal cannot read a private thread after membership is removed'
         members: { fetch: async () => null },
         messages: { fetch: async () => { reads++; } },
     }) };
-    await offerModal.execute(i);
-    assert.match(content(i), /no longer a member/);
+    const result = await require('../src/utils/sourceMessage').getAccessibleSourceMessage(i, channelId, '400000000000000001');
+    assert.match(result.error, /no longer a member/);
     assert.equal(reads, 0);
 });

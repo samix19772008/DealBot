@@ -73,12 +73,23 @@ const createDeal = db.transaction(params => {
     `).run(`ESC-${randomUUID().toUpperCase()}`, guildId, buyerId, sellerId, itemDescription.trim(),
         Math.round(amount * 100) / 100, currency.trim(), paymentUnit);
     const escrow = getEscrowById(result.lastInsertRowid);
+    if (params.listingRequest) {
+        require('./listingRepository').consumeListingRequest(escrow.id, {
+            ...params.listingRequest,
+            guildId: escrow.guild_id,
+            buyerDiscordId: escrow.buyer_discord_id,
+            sellerDiscordId: escrow.seller_discord_id,
+            amount: escrow.amount,
+            currency: escrow.currency,
+            paymentUnit: escrow.payment_unit,
+        });
+    }
     audit(escrow.id, 'created', null, 'pending', escrow.buyer_discord_id);
     return escrow;
 });
 
-function createEscrow({ guildId, buyerId, sellerId, itemDescription, amount, currency = 'USD', paymentUnit }) {
-    return createDeal.immediate({ guildId, buyerId, sellerId, itemDescription, amount, currency, paymentUnit });
+function createEscrow({ guildId, buyerId, sellerId, itemDescription, amount, currency = 'USD', paymentUnit, listingRequest }) {
+    return createDeal.immediate({ guildId, buyerId, sellerId, itemDescription, amount, currency, paymentUnit, listingRequest });
 }
 
 /** A compare-and-set and its audit entry commit together or neither commits. */

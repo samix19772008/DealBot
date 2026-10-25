@@ -147,3 +147,40 @@ CREATE TABLE IF NOT EXISTS guild_flag_review_audit (
     new_is_scammer INTEGER NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS listing_request_sessions (
+    token TEXT PRIMARY KEY,
+    guild_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    buyer_discord_id TEXT NOT NULL,
+    seller_discord_id TEXT NOT NULL,
+    listing_json TEXT NOT NULL,
+    source_fingerprint TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    consumed_escrow_id INTEGER UNIQUE REFERENCES escrow_transactions(id),
+    CHECK (buyer_discord_id != seller_discord_id),
+    CHECK (expires_at > created_at)
+);
+CREATE INDEX IF NOT EXISTS idx_listing_request_expiry ON listing_request_sessions(expires_at)
+    WHERE consumed_escrow_id IS NULL;
+
+CREATE TABLE IF NOT EXISTS escrow_listing_terms (
+    escrow_id INTEGER PRIMARY KEY REFERENCES escrow_transactions(id) ON DELETE CASCADE,
+    guild_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    buyer_discord_id TEXT NOT NULL,
+    seller_discord_id TEXT NOT NULL,
+    item TEXT NOT NULL,
+    quantity INTEGER NOT NULL CHECK (quantity BETWEEN 1 AND 999),
+    method_key TEXT NOT NULL,
+    unit_amount REAL NOT NULL CHECK (unit_amount > 0),
+    payment_unit TEXT NOT NULL CHECK (payment_unit IN ('each', 'stacks')),
+    total_amount REAL NOT NULL CHECK (total_amount > 0),
+    currency TEXT NOT NULL,
+    listing_json TEXT NOT NULL,
+    source_fingerprint TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

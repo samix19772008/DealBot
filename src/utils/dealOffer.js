@@ -8,6 +8,9 @@ const { acquireOfferCooldown, expirePendingOffers, assertActiveDealLimit } = req
 const { validateDealInput } = require('./validation');
 const { t } = require('./i18n');
 const { resolvePayment, formatPayment } = require('./payments');
+const { getListingQuote } = require('../database/listingRepository');
+const { listingFingerprint } = require('./listings');
+const { getAccessibleSourceMessage } = require('./sourceMessage');
 
 const REQUIRED_HUB_PERMISSIONS = [
     PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages,
@@ -21,7 +24,7 @@ async function respond(interaction, payload) {
     return interaction.reply({ ...payload, ephemeral: true });
 }
 
-async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, amount, currency = 'USD', paymentUnit = 'each', allowPublicOffer = false }) {
+async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, amount, currency = 'USD', paymentUnit = 'each', allowPublicOffer = false, listingRequest }) {
     if (!interaction.guildId || !interaction.guild) {
         return respond(interaction, { content: 'Start a deal from inside your server.' });
     }
@@ -31,7 +34,20 @@ async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, 
     if (sellerDiscordUser.bot) return respond(interaction, { content: t('deal.cannotDealBot', 'en') });
 
     let details;
+    let listingQuote;
     try {
+        if (listingRequest) {
+            listingQuote = getListingQuote(listingRequest.token, {
+                guildId: interaction.guildId, buyerDiscordId: interaction.user.id,
+                methodKey: listingRequest.methodKey, quantity: listingRequest.quantity,
+            });
+            if (listingQuote.session.seller_discord_id !== sellerDiscordUser.id) {
+                return respond(interaction, { content: 'The listing seller has changed. Reopen Request a Deal on the source message.' });
+            }
+            // Prices and descriptions come only from the stored seller listing.
+            ({ itemDescription } = listingQuote);
+            ({ amount, currency, paymentUnit } = listingQuote.payment);
+        }
         const payment = resolvePayment({ method: currency, amount, unit: paymentUnit });
         details = { ...validateDealInput({ itemDescription, ...payment }), paymentUnit: payment.paymentUnit };
     }
@@ -82,15 +98,26 @@ async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, 
         return respond(interaction, { content: 'You need access to the escrow hub before opening a deal.' });
     }
 
+    if (listingQuote) {
+        const session = listingQuote.session;
+        const source = await getAccessibleSourceMessage(interaction, session.channel_id, session.message_id);
+        if (source.error) return respond(interaction, { content: source.error, allowedMentions: { parse: [] } });
+        if (source.message.author.id !== session.seller_discord_id || listingFingerprint(source.message) !== session.source_fingerprint) {
+            return respond(interaction, { content: 'The seller edited this listing. Reopen Request a Deal to use its current prices.' });
+        }
+    }
+
     let escrow;
     try {
         // The repository repeats the cap check in its insertion transaction: another
         // request may have filled the final slot while Discord lookups were pending.
         escrow = createEscrow({
-            guildId: interaction.guildId, buyerId: buyer.id, sellerId: seller.id, ...details,
+            guildId: interaction.guildId, buyerId: buyer.id, sellerId: seller.id, ...details, listingRequest,
         });
     } catch (error) {
-        if (error.code === 'ACTIVE_DEAL_LIMIT') return respond(interaction, { content: error.message });
+        if (['ACTIVE_DEAL_LIMIT', 'LISTING_REQUEST_INVALID'].includes(error.code)) {
+            return respond(interaction, { content: error.message, allowedMentions: { parse: [] } });
+        }
         throw error;
     }
     const embed = buildDealEmbed({
