@@ -64,7 +64,7 @@ test('ambiguous, duplicate, unsupported, image-only, and incomplete listings are
         'Item: Cape\nGolds: 33\n```\nMoney: 5\n```',
     ];
     for (const content of invalid) {
-        assert.throws(() => parseListing(content), /listing-format/, String(content));
+        assert.throws(() => parseListing(content), /Preview Listing/, String(content));
     }
     const imageOnly = { content: '', embeds: [{ title: 'Item: Cape', description: 'Money: $2' }], attachments: [{ url: 'image.png' }] };
     assert.equal(getListingText(imageOnly), '');
@@ -78,7 +78,7 @@ test('price syntax rejects decimals in game units, zero, negative, exponents, an
         'Money: 2.001', 'Money: -2', 'Money: 0', 'Money: 2 stacks', 'Money: 2 USD',
         'Money: 1,000', 'Money: NaN', 'Money: Infinity', 'Money: 10000000000',
     ]) {
-        assert.throws(() => parseListing(`Item: Product\n${line}`), /listing-format/, line);
+        assert.throws(() => parseListing(`Item: Product\n${line}`), /Preview Listing/, line);
     }
 });
 
@@ -106,7 +106,7 @@ test('quantity multiplication must still fit existing USD and individual-game-un
 test('item names are bounded and cannot introduce mentions, controls, or extra formatting', () => {
     assert.equal(parseListing(`Item: ${'a'.repeat(200)}\nGolds: 33`).item.length, 200);
     for (const item of ['', 'a'.repeat(201), '<@123>', '@everyone', 'Product\u0000', '`Item`']) {
-        assert.throws(() => parseListing(`Item: ${item}\nGolds: 33`), /listing-format/);
+        assert.throws(() => parseListing(`Item: ${item}\nGolds: 33`), /Preview Listing/);
     }
     assert.throws(() => parseListing(`Item: Cape\n${' '.repeat(4001)}\nGolds: 33`), /4,000/);
 });

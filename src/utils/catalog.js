@@ -14,7 +14,7 @@ function methodForEmoji(name) {
     const key = name.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (['money', 'usd', 'dollar', 'dollars', 'cash'].includes(key)) return 'money';
     if (['gold', 'golds'].includes(key)) return 'golds';
-    if (['redblock', 'redblocks'].includes(key)) return 'redblocks';
+    if (['redblock', 'redblocks', 'redstone', 'redstonedust', 'redstoneblock', 'redstoneblocks'].includes(key)) return 'redblocks';
     if (['sky1notch', 'sky1notchs', 'sky1notches'].includes(key)) return 'sky1notchs';
     return null;
 }
@@ -49,8 +49,15 @@ function cleanLine(raw) {
     const heading = /^#{1,6}(?:\s|$)/.test(text) ||
         /^\s*(?:\*\*[^*]+\*\*|__[^_]+__)\s*$/.test(raw);
     text = text.replace(/^#{1,6}\s*/, '').replace(/^(?:[-+•]|>)\s+/, '').replace(/\s+/g, ' ').trim();
-    if (heading && !text) text = emojiHeading(names);
-    return { text, heading, headingLevel, struck };
+    const emojiOnly = heading && !text;
+    const equipmentHeading = heading && ((emojiOnly && emojiHeading(names) === 'Armour and Sword') ||
+        /^(?:helm(?:et)?|chest(?:plate)?|leggings|boots?|(?:diamond\s+)?sword)$/i.test(text));
+    if (emojiOnly) {
+        const keys = names.map(name => name.toLowerCase().replace(/[^a-z0-9]/g, ''));
+        text = keys.some(key => /^prices?(?:arrowdown|downarrow)?$/.test(key)) && keys.every(key => /^(?:prices?(?:arrowdown|downarrow)?|arrowdown|downarrow|arrowdownsmall|smallredtriangledown)$/.test(key))
+            ? 'Prices' : emojiHeading(names);
+    }
+    return { text, heading, headingLevel, struck, equipmentHeading };
 }
 
 function methodsIn(text) {
@@ -58,6 +65,10 @@ function methodsIn(text) {
         METHOD_PATTERNS[method.key].lastIndex = 0;
         return METHOD_PATTERNS[method.key].test(text);
     });
+}
+
+function isPriceHeading(text) {
+    return /^prices?$/i.test(text.replace(/[\p{P}\p{S}\uFE0F]/gu, '').trim());
 }
 
 function methodLabel(text) {
@@ -112,14 +123,14 @@ function bundleFor(offer, heading) {
     if (/^[+-]?\d/.test(offer) && !/^[1-9]\d*(?:\s|[A-Za-z]|$)/.test(offer)) {
         throw new Error('A product bundle must contain a positive whole number of items.');
     }
-    const explicit = offer.match(/^(\d+)\s*(books?|potions?|stews?|rods?|xp|experience|golden\s*apples?)\b/i);
+    const explicit = offer.match(/^(\d+)\s*(books?|potions?|stews?|rods?|sets?|xp|experience|golden\s*apples?)\b/i);
     if (explicit) {
         const count = Number(explicit[1]);
         if (!Number.isSafeInteger(count) || count < 1 || count > 9999999999) throw new Error('The bundle size is invalid.');
         const unit = explicit[2].toLowerCase();
         const bundleUnit = /^(?:xp|experience)$/.test(unit) ? 'XP' :
             /^book/.test(unit) ? 'Books' : /^potion/.test(unit) ? 'Potions' :
-                /^stew/.test(unit) ? 'Stews' : /^rod/.test(unit) ? 'Rods' : 'Golden Apples';
+                /^stew/.test(unit) ? 'Stews' : /^rod/.test(unit) ? 'Rods' : /^set/.test(unit) ? 'Sets' : 'Golden Apples';
         return { bundleQuantity: count, bundleUnit };
     }
     if (/^\d+$/.test(offer) && /golden\s*apple/i.test(heading)) {
@@ -193,6 +204,9 @@ function parseCatalog(content, { stackNotation = 'items' } = {}) {
     const products = [];
     const warnings = [];
     let section = { title: '', stock: null, products: [], unavailable: false };
+    // A seller can describe each armour component before listing prices for the
+    // complete set. Component headings and their stocks are not bundle terms.
+    let setDescription = null;
     const headingPath = [];
     const warn = message => { if (warnings.length < 100 && !warnings.includes(message)) warnings.push(message); };
     const finishSection = () => { for (const product of section.products) product.stock = section.unavailable ? 0 : section.stock; };
@@ -251,7 +265,7 @@ function parseCatalog(content, { stackNotation = 'items' } = {}) {
             continue;
         }
         if (codeBlock === 'skip') continue;
-        const { text, heading, headingLevel, struck } = cleanLine(raw);
+        const { text, heading, headingLevel, struck, equipmentHeading } = cleanLine(raw);
         if (!text || /^```/.test(text) || /^(?:text|plaintext|deal)$/i.test(text)) continue;
         if (/^(?:currently\s+)?(?:sold\s*out|out\s*of\s*stock|unavailable)(?:\b|[.!])/i.test(text) && !/[=:]/.test(text)) {
             section.unavailable = true;
@@ -274,7 +288,17 @@ function parseCatalog(content, { stackNotation = 'items' } = {}) {
             warn(`Line ${index + 1}: unclear advertised stock was treated as unavailable.`);
             continue;
         }
-        if (/^prices?\s*:?$/i.test(text)) continue;
+        if (isPriceHeading(text)) {
+            if (setDescription?.components > 1) {
+                const following = lines.slice(index + 1).map(cleanLine);
+                const boundary = following.findIndex(line => line.heading && !isPriceHeading(line.text));
+                const block = boundary < 0 ? following : following.slice(0, boundary);
+                if (block.some(line => /^\d+\s+sets?\s*(?:=|:)\s*/i.test(line.text))) {
+                    newSection(setDescription.title, { plain: true, struck: setDescription.struck });
+                }
+            }
+            continue;
+        }
         const itemLine = text.match(/^item\s*:\s*(.+)$/i);
         if (itemLine) { newSection(itemLine[1]); continue; }
         const labeled = text.match(/^(.+?)\s*:\s*(.*)$/);
@@ -291,7 +315,17 @@ function parseCatalog(content, { stackNotation = 'items' } = {}) {
             addPrice(getProduct(inline[1].trim()), inline[2], null, index + 1, struck);
             continue;
         }
-        if (heading) { newSection(text.replace(/\s*:\s*$/, ''), { level: headingLevel, struck }); continue; }
+        if (heading) {
+            const title = text.replace(/\s*:\s*$/, '');
+            if (equipmentHeading) {
+                if (setDescription) setDescription.components++;
+            } else {
+                setDescription = /\bsets?\b/i.test(title)
+                    ? { title: title.replace(/^selling\s+/i, ''), components: 0, struck } : null;
+            }
+            newSection(title, { level: headingLevel, struck });
+            continue;
+        }
         const next = lines.slice(index + 1).find(line => line.trim());
         const nextLabel = next && cleanLine(next).text.match(/^(.+?)\s*:\s*(.*)$/);
         if (section.title && nextLabel && methodLabel(nextLabel[1]) &&

@@ -1,6 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 
 module.exports = {
+    registered: false,
     data: new SlashCommandBuilder()
         .setName('ping')
         .setDMPermission(false)

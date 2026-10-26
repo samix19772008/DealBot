@@ -79,8 +79,16 @@ async function showDealStatus(interaction, suppliedReference, { allowResume = fa
         if (allowResume && !insideDealThread && escrow.channel_id &&
             ['awaiting_payment', 'funded', 'delivered', 'disputed'].includes(escrow.status)) {
             components = [new ActionRowBuilder().addComponents(new ButtonBuilder()
-                .setCustomId(`deals_resume_${escrow.id}`).setLabel('Resume Conversation').setStyle(ButtonStyle.Primary))];
-            embed.addFields({ name: 'Resume Conversation', value: 'Open or resume this active deal conversation. Access is checked again; completed conversations remain archived.' });
+                .setCustomId(`deals_resume_${escrow.id}`).setLabel('Open Conversation').setStyle(ButtonStyle.Primary))];
+            if (participant && ['awaiting_payment', 'funded', 'delivered'].includes(escrow.status)) {
+                components[0].addComponents(new ButtonBuilder()
+                    .setCustomId(`deals_hide_${escrow.id}`).setLabel('Hide Conversation').setStyle(ButtonStyle.Secondary));
+            }
+            embed.addFields({ name: 'Your Conversation', value: 'Open it to continue, or hide it from the active thread list for both participants. Hiding keeps the deal active and saves every message. Access is checked again when opening.' });
+        }
+        if (allowResume && ['completed', 'cancelled', 'refunded'].includes(escrow.status) && escrow.channel_id) {
+            components.push(new ActionRowBuilder().addComponents(new ButtonBuilder()
+                .setCustomId(`deals_transcript_${escrow.id}`).setLabel('Download Transcript').setStyle(ButtonStyle.Primary)));
         }
         return interaction.reply({ embeds: [embed], components, ephemeral: true, allowedMentions: { parse: [] } });
 }

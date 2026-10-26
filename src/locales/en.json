@@ -35,6 +35,6 @@
     "errors": {
         "notDesignatedSeller": "You cannot accept this deal, you are not the designated seller.",
         "alreadyStatus": "This deal is already in status \"{status}\" and cannot be accepted again.",
-        "hubNotConfigured": "The main escrow hub channel isn't set up on this server. Ask an admin to run `/set-hub-channel` first."
+        "hubNotConfigured": "The main escrow hub channel isn't set up on this server. Ask an admin to run `/setup hub` first."
     }
 }

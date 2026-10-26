@@ -13,6 +13,7 @@ const REQUIRED = [
 ];
 
 module.exports = {
+    registered: false,
     data: new SlashCommandBuilder()
         .setName('set-hub-channel')
         .setDescription('Choose and validate the channel used for private escrow threads')

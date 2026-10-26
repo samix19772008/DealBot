@@ -141,7 +141,7 @@ test('all dashboard controls reject a different user or server before returning 
     }
 });
 
-test('selected own deal reveals its full reference and only a safe resume action outside its thread', async () => {
+test('selected own deal reveals its full reference and only conversation visibility actions outside its thread', async () => {
     const deal = seed({ status: 'funded' });
     const payload = buildDealDashboard({ guildId, userId: buyerId });
     const interaction = input({ customId: findControl(payload, 'deals_pick_').custom_id, values: [String(deal.id)], options: undefined });
@@ -149,7 +149,8 @@ test('selected own deal reveals its full reference and only a safe resume action
     const detail = interaction.calls.replies[0];
     assert.equal(detail.ephemeral, true);
     assert.match(detail.embeds[0].toJSON().description, new RegExp(deal.transaction_uuid));
-    assert.deepEqual(rowItems(detail).map(control => control.custom_id), [`deals_resume_${deal.id}`]);
+    assert.deepEqual(rowItems(detail).map(control => control.custom_id), [`deals_resume_${deal.id}`, `deals_hide_${deal.id}`]);
+    assert.deepEqual(rowItems(detail).map(control => control.label), ['Open Conversation', 'Hide Conversation']);
     assert.deepEqual(detail.allowedMentions, { parse: [] });
     assert.doesNotMatch(JSON.stringify(detail.components.map(row => row.toJSON())), /confirm_payment_|confirm_receipt_|confirm_delivery_|open_dispute_/);
 });
@@ -171,8 +172,17 @@ test('completed deal selections remain read-only outside their archived conversa
     const payload = buildDealDashboard({ guildId, userId: buyerId, status: 'completed' });
     const interaction = input({ customId: findControl(payload, 'deals_pick_').custom_id, values: [String(deal.id)] });
     await pick.execute(interaction);
-    assert.deepEqual(interaction.calls.replies[0].components, []);
+    assert.deepEqual(rowItems(interaction.calls.replies[0]).map(control => control.custom_id), [`deals_transcript_${deal.id}`]);
+    assert.equal(rowItems(interaction.calls.replies[0])[0].label, 'Download Transcript');
     assert.match(interaction.calls.replies[0].embeds[0].toJSON().description, new RegExp(deal.transaction_uuid));
+});
+
+test('a disputed deal offers opening its conversation without hiding it or downloading a closing transcript', async () => {
+    const deal = seed({ status: 'disputed' });
+    const payload = buildDealDashboard({ guildId, userId: buyerId });
+    const interaction = input({ customId: findControl(payload, 'deals_pick_').custom_id, values: [String(deal.id)] });
+    await pick.execute(interaction);
+    assert.deepEqual(rowItems(interaction.calls.replies[0]).map(control => control.custom_id), [`deals_resume_${deal.id}`]);
 });
 
 test('malformed controls and unsupported filters fail privately while valid IDs fit Discord limits', async () => {

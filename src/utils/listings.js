@@ -10,7 +10,7 @@ const LISTING_TEMPLATE = [
     'Sky 1 Notchs: 20',
 ].join('\n');
 const LISTING_FORMAT_HELP = [
-    'Ask the seller to use /listing-format and edit their post to match the listing format.',
+    'Ask the seller to use Apps > Preview Listing on their post and clarify the product prices.',
     'Use one Item line and one or more price lines. Keep only the payment methods the seller accepts.',
     'Each price is for ONE product. Game prices must be whole items or stacks of 64; Money is USD.',
 ].join(' ');

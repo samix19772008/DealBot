@@ -22,7 +22,7 @@ module.exports = {
         await syncDealRanks(interaction, escrow);
         const embed = new EmbedBuilder().setColor(0x2B2D31).setTitle('Dispute Resolved: Scammer Flagged')
             .setDescription(`Moderator <@${interaction.user.id}> flagged <@${flaggedDiscordId}> as a scammer. Deal \`${escrow.transaction_uuid}\` was cancelled.`)
-            .setFooter({ text: 'This flag applies in this server only. An administrator can review it with /review-flag. No ban or refund is issued.' }).setTimestamp();
+            .setFooter({ text: 'This flag applies in this server only. An administrator can review it with /setup review-flag. No ban or refund is issued.' }).setTimestamp();
         await interaction.editReply({ content: null, embeds: [embed], components: [] });
         await sendCloseControls(interaction, escrow);
     },

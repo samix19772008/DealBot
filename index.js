@@ -17,11 +17,12 @@ async function start() {
     let stopBackupMaintenance = async () => {};
     let stopHealth = () => {};
     let stopThreadOrganization = async () => {};
+    let stopActiveThreadOrganization = async () => {};
     const shutdown = require('./src/services/runtimeLifecycle').createShutdown({
         client,
         stopEarly: [() => stopHealth(), () => stopOfferMaintenance()],
         drain: () => drainClientEvents(client),
-        stopLate: [() => stopTranscriptMaintenance(), () => stopBackupMaintenance(), () => stopThreadOrganization()],
+        stopLate: [() => stopTranscriptMaintenance(), () => stopBackupMaintenance(), () => stopThreadOrganization(), () => stopActiveThreadOrganization()],
         closeDatabase: () => { if (db.open) db.close(); },
     });
     const signalHandlers = new Map();
@@ -46,6 +47,7 @@ async function start() {
         stopOfferMaintenance = require('./src/services/offerMaintenance').startOfferMaintenance();
         stopTranscriptMaintenance = require('./src/services/transcriptMaintenance').startTranscriptMaintenance({ client });
         stopThreadOrganization = require('./src/services/threadOrganization').startThreadOrganization({ client });
+        stopActiveThreadOrganization = require('./src/services/activeThreadOrganization').startActiveThreadOrganization({ client });
         stopBackupMaintenance = startBackupMaintenance({ sourcePath: DB_PATH, intervalMs: backupInterval });
         stopHealth = require('./src/services/runtimeHealth').startRuntimeHealth({ client, getMetrics: () => ({
             ...require('./src/services/transcripts').getTranscriptQueueStats(),

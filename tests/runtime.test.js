@@ -389,6 +389,6 @@ test('seller DM failure cancels privately by default without exposing item or pa
     assert.equal(event.actor_discord_id, fixture.interaction.user.id);
     assert.equal(event.reason, 'Seller DMs unavailable; public posting not permitted');
     assert.match(fixture.sent.replies.at(-1).content, /cancelled/);
-    assert.match(fixture.sent.replies.at(-1).content, /public-offer:true/);
+    assert.match(fixture.sent.replies.at(-1).content, /enable server DMs.*Request a Deal/);
     assert.equal(fixture.sent.deferrals[0].ephemeral, true);
 });

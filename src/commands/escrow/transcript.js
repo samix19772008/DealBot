@@ -12,7 +12,13 @@ module.exports = {
         .addStringOption(option => option.setName('reference')
             .setDescription('The ESC- reference or numeric deal ID').setMinLength(1).setMaxLength(50).setRequired(true)),
     async execute(interaction) {
-        const reference = interaction.options.getString('reference')?.trim();
+        return downloadTranscript(interaction, interaction.options.getString('reference'));
+    },
+    downloadTranscript,
+};
+
+async function downloadTranscript(interaction, suppliedReference) {
+        const reference = typeof suppliedReference === 'string' ? suppliedReference.trim() : '';
         const escrow = reference && getEscrowById(reference);
         const participant = escrow && [escrow.buyer_discord_id, escrow.seller_discord_id].includes(interaction.user.id);
         const moderator = interaction.guildId && isModerator(interaction.member, interaction.guildId);
@@ -38,5 +44,4 @@ module.exports = {
             files: [new AttachmentBuilder(Buffer.from(archive.html), { name: archive.filename })],
             allowedMentions: { parse: [] },
         });
-    },
-};
+}

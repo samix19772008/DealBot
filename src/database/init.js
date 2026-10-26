@@ -30,6 +30,7 @@ function initDatabase() {
                 hub_channel_id: 'TEXT',
                 language: "TEXT NOT NULL DEFAULT 'en'",
                 thread_cleanup_minutes: 'INTEGER NOT NULL DEFAULT 30',
+                active_thread_idle_minutes: 'INTEGER NOT NULL DEFAULT 15',
                 bronze_role_id: 'TEXT',
                 silver_role_id: 'TEXT',
                 gold_role_id: 'TEXT',

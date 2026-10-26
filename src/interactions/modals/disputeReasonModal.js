@@ -18,7 +18,7 @@ module.exports = {
             return deny(interaction, 'Please describe the problem in 10 to 1,000 characters.');
         }
         const settings = getGuildSettings(escrow.guild_id);
-        if (!settings?.moderator_role_id) return deny(interaction, 'The moderator role is not configured. Ask an administrator to run /set-mod-role.');
+        if (!settings?.moderator_role_id) return deny(interaction, 'The moderator role is not configured. Ask an administrator to run /setup staff.');
         await interaction.deferReply();
         const role = await interaction.guild.roles.fetch(settings.moderator_role_id).catch(() => null);
         const requiredPermissions = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory,

@@ -100,6 +100,19 @@ function serviceFixture(overrides = {}) {
     return { stored, sent, calls, attachment, thread, service, database, repository };
 }
 
+test('hiding an ongoing or disputed conversation does not create closure evidence or send a closing DM', async () => {
+    for (const status of ['pending', 'awaiting_payment', 'funded', 'delivered', 'disputed']) {
+        const f = serviceFixture();
+        f.stored.status = status;
+        assert.deepEqual(await f.service.deliver(f.thread), { skipped: true });
+        assert.deepEqual(f.calls.recorded, []);
+        assert.deepEqual(f.calls.generated, []);
+        assert.equal(f.sent.get(buyerId).length, 0);
+        assert.equal(f.sent.get(sellerId).length, 0);
+        assert.equal(f.repository.getQueueStats().pendingArchives, 0);
+    }
+});
+
 test('transcript summary renders the purple card with exact close identity/time and payment details', () => {
     const payload = summary();
     const embed = payload.embeds[0].toJSON();

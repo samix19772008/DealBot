@@ -2,6 +2,7 @@ const { Events } = require('discord.js');
 const { getEscrowByChannelId } = require('../database/escrowRepository');
 const { markThreadReopened } = require('../database/transcriptRepository');
 const { rescheduleThreadCleanup } = require('../database/threadOrganizationRepository');
+const { rescheduleActiveThreadCleanup } = require('../database/activeThreadOrganizationRepository');
 const { deliverThreadTranscript, TRANSCRIPT_LIMIT } = require('../services/transcripts');
 
 module.exports = {
@@ -12,6 +13,7 @@ module.exports = {
             if (escrow && newThread.guildId === escrow.guild_id) {
                 markThreadReopened(escrow.id);
                 rescheduleThreadCleanup(escrow.id);
+                rescheduleActiveThreadCleanup(escrow.id);
             }
             return;
         }

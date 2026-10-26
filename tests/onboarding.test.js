@@ -72,8 +72,8 @@ test('/setup missing configuration gives actionable commands and performs no wri
     await setup.execute(f.interaction);
     const embed = output(f);
     assert.match(embed.description, /need attention/);
-    assert.match(field(embed, 'Required · Escrow Hub'), /set-hub-channel/);
-    assert.match(field(embed, 'Required · Dispute Staff'), /set-mod-role/);
+    assert.match(field(embed, 'Required · Escrow Hub'), /setup hub/);
+    assert.match(field(embed, 'Required · Dispute Staff'), /setup staff/);
     assert.match(field(embed, 'Optional · Trust Rank Roles'), /work without rank roles/);
     assert.equal(f.calls.replies[0].ephemeral, true);
     assert.equal(f.calls.writes, 0);
@@ -113,7 +113,7 @@ test('/setup diagnoses deleted hub and staff roles instead of claiming readiness
     const embed = output(f);
     assert.match(embed.description, /need attention/);
     assert.match(field(embed, 'Required · Escrow Hub'), /not configured/);
-    assert.match(field(embed, 'Required · Dispute Staff'), /set-mod-role/);
+    assert.match(field(embed, 'Required · Dispute Staff'), /setup staff/);
 });
 
 test('/setup marks unsafe optional rank mappings without blocking an otherwise ready server', async () => {
@@ -125,7 +125,7 @@ test('/setup marks unsafe optional rank mappings without blocking an otherwise r
     const embed = output(f);
     assert.match(embed.description, /Required setup checks passed/);
     assert.match(field(embed, 'Optional · Trust Rank Roles'), /⚠️.*Bronze/);
-    assert.match(field(embed, 'Optional · Trust Rank Roles'), /set-rank-role/);
+    assert.match(field(embed, 'Optional · Trust Rank Roles'), /setup rank-role/);
     assert.equal(f.calls.writes, 0);
 });
 

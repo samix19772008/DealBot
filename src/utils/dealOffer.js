@@ -86,7 +86,7 @@ async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, 
     ]);
     if (!sellerMember) return respond(interaction, { content: 'The seller must be a member of this server.' });
     if (!hub || hub.type !== ChannelType.GuildText) {
-        return respond(interaction, { content: 'The escrow hub is unavailable. Ask an administrator to run /set-hub-channel.' });
+        return respond(interaction, { content: 'The escrow hub is unavailable. Ask an administrator to run /setup hub.' });
     }
     if (!bot || !hub.permissionsFor(bot)?.has(REQUIRED_HUB_PERMISSIONS)) {
         return respond(interaction, { content: 'The bot needs View Channel, Send Messages, Embed Links, Read Message History, Create Private Threads, Send Messages in Threads, and Manage Threads in the escrow hub.' });
@@ -144,7 +144,7 @@ async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, 
         if (allowPublicOffer !== true) {
             cancelEscrow(escrow.id, { actorId: interaction.user.id, reason: 'Seller DMs unavailable; public posting not permitted' });
             return respond(interaction, {
-                content: 'The seller could not receive a DM, so this request was cancelled. Ask the seller to enable DMs, or agree together to share the item and payment details in the hub before using `/deal public-offer:true`.',
+                content: 'The seller could not receive a DM, so this request was cancelled. Ask the seller to enable server DMs, then choose Request a Deal on the post again.',
             });
         }
         try {

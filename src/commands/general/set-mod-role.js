@@ -3,6 +3,7 @@ const { getGuildSettings, setModeratorRole } = require('../../database/guildSett
 const { RANKS } = require('../../utils/ranks');
 
 module.exports = {
+    registered: false,
     data: new SlashCommandBuilder()
         .setName('set-mod-role')
         .setDescription('Set the staff role authorized to resolve escrow disputes')

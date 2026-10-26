@@ -25,6 +25,27 @@ function setLanguage(guildId, language) {
 }
 
 const THREAD_CLEANUP_MINUTES = Object.freeze([0, 15, 30, 60, 1440]);
+const ACTIVE_THREAD_IDLE_MINUTES = Object.freeze([0, 5, 15, 30, 60]);
+
+function getActiveThreadIdleMinutes(guildId) {
+    const minutes = getGuildSettings(guildId)?.active_thread_idle_minutes;
+    return ACTIVE_THREAD_IDLE_MINUTES.includes(minutes) ? minutes : 15;
+}
+
+function setActiveThreadIdleMinutes(guildId, minutes) {
+    if (!Number.isInteger(minutes) || !ACTIVE_THREAD_IDLE_MINUTES.includes(minutes)) {
+        throw new Error('Choose an active-chat idle delay of 0, 5, 15, 30, or 60 minutes.');
+    }
+    return db.transaction(() => {
+        const now = Date.now();
+        setSetting(guildId, 'active_thread_idle_minutes', minutes);
+        db.prepare(`UPDATE deal_active_thread_cleanup SET due_at = ?, lease_token = NULL, lease_until = NULL,
+            updated_at = ? WHERE status = 'pending' AND escrow_id IN (
+                SELECT id FROM escrow_transactions WHERE guild_id = ?
+            )`).run(now, now, guildId);
+        return minutes;
+    }).immediate();
+}
 
 function getThreadCleanupMinutes(guildId) {
     const minutes = getGuildSettings(guildId)?.thread_cleanup_minutes;
@@ -49,4 +70,5 @@ function setThreadCleanupMinutes(guildId, minutes) {
 }
 
 module.exports = { getGuildSettings, setModeratorRole, setRankRole, setHubChannel, setLanguage,
-    getThreadCleanupMinutes, setThreadCleanupMinutes, THREAD_CLEANUP_MINUTES };
+    getThreadCleanupMinutes, setThreadCleanupMinutes, THREAD_CLEANUP_MINUTES,
+    getActiveThreadIdleMinutes, setActiveThreadIdleMinutes, ACTIVE_THREAD_IDLE_MINUTES };

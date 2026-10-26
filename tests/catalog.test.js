@@ -268,3 +268,74 @@ test('an unrelated clear product remains available when duplicate-name offers ar
     assert.match(nested.products[0].item, /Diamond Armour/);
     assert.match(nested.products[1].item, /Iron Armour/);
 });
+
+test('the real Redpvp advertisement keeps complete-set packs separate from component descriptions and stock', () => {
+    const catalog = parseCatalog(posts.redpvp);
+    assert.deepEqual(catalog.warnings, []);
+    assert.equal(catalog.products.length, 2);
+    const single = matching(catalog, /Redpvp Armour Sets · 1 Set$/);
+    const ten = matching(catalog, /Redpvp Armour Sets · 10 Sets$/);
+    assert.equal(single.bundleQuantity, 1);
+    assert.equal(ten.bundleQuantity, 10);
+    assert.equal(single.bundleUnit, 'Sets');
+    assert.equal(ten.bundleUnit, 'Sets');
+    assert.deepEqual(single.options.map(option => option.key), ['redblocks']);
+    assert.deepEqual(ten.options.map(option => option.key), ['golds']);
+    assert.equal(payment(single, 'redblocks').amount, 32);
+    assert.equal(payment(single, 'redblocks').paymentUnit, 'each');
+    assert.equal(payment(ten, 'golds').amount, 4);
+    assert.equal(payment(ten, 'golds').paymentUnit, 'each');
+    assert.ok(catalog.products.every(product => product.stock === null));
+    assert.doesNotMatch(JSON.stringify(catalog), /86|56|76|45|43|Protection|Unbreaking|Sharpness|everyone|691841117012099164/);
+});
+
+test('set-pack quantities multiply only their own fixed price without exposing another pack payment method', () => {
+    const catalog = parseCatalog(posts.redpvp);
+    const single = matching(catalog, / · 1 Set$/);
+    const ten = matching(catalog, / · 10 Sets$/);
+    assert.equal(calculateListingPayment(single, 'redblocks', 2).amount, 64);
+    assert.equal(calculateListingPayment(ten, 'golds', 2).amount, 8);
+    assert.equal(ten.bundleQuantity * 2, 20);
+    assert.throws(() => calculateListingPayment(single, 'golds', 1), /offered/);
+    assert.throws(() => calculateListingPayment(ten, 'redblocks', 1), /offered/);
+});
+
+test('piece-stock changes never become an advertised complete-set stock, while explicit bundle stock does', () => {
+    const changed = posts.redpvp.replace('Stock : 43', 'Stock : 1').replace('Stock : 86', 'Stock : 0');
+    assert.ok(parseCatalog(changed).products.every(product => product.stock === null));
+    const sharedStock = changed.replace('**# Prices :', '**# Prices :\n`Stock: 12`');
+    const catalog = parseCatalog(sharedStock);
+    assert.ok(catalog.products.every(product => product.stock === 12));
+});
+
+test('component headings written as words preserve the same explicit set context', () => {
+    const post = posts.redpvp.replace('# <:Helm:1460422629465919539>', '# Helmet')
+        .replace('# <:Chest:1460422475291562090>', '# Chestplate')
+        .replace('# <:Leggings:1460422360988520610>', '# Leggings')
+        .replace('# <:boot:1460422694922096875>', '# Boots')
+        .replace('# <:diamond_sword:1135755525997482044>', '# Diamond Sword');
+    const catalog = parseCatalog(post);
+    assert.equal(catalog.products.length, 2);
+    assert.ok(catalog.products.every(product => product.item.startsWith('Redpvp Armour Sets · ')));
+    assert.ok(catalog.products.every(product => product.stock === null));
+});
+
+test('decorative Prices headings retain the actual product name instead of becoming a product', () => {
+    for (const heading of ['# <:Prices:123456789012345678> <:arrow_down:234567890123456789>',
+        '# <:Prices_arrow_down:123456789012345678>', '# Prices ⬇️', '# **Prices :**']) {
+        const catalog = parseCatalog(`# Menace Cape\n${heading}\nMoney: $2`);
+        assert.equal(catalog.products.length, 1);
+        assert.equal(catalog.products[0].item, 'Menace Cape');
+        assert.equal(payment(catalog.products[0], 'money').amount, 2);
+    }
+});
+
+test('recognized redstone emoji names use the existing Redblocks payment without reading emoji identifiers as prices', () => {
+    for (const name of ['redstone_dust', 'Redstone', 'Redstone_Block', 'redblocks']) {
+        const catalog = parseCatalog(`# Cape\n1 Cape: 32 <:${name}:691841117012099164>`);
+        assert.deepEqual(catalog.products[0].options.map(option => option.key), ['redblocks']);
+        assert.equal(payment(catalog.products[0], 'redblocks').amount, 32);
+        assert.equal(payment(catalog.products[0], 'redblocks').currency, 'Redblocks');
+    }
+    assert.throws(() => parseCatalog('# Cape\n1 Cape: 32 <:Redstone_Ore:691841117012099164>'), /No clear product prices/);
+});

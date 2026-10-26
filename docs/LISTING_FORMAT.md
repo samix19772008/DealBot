@@ -2,7 +2,7 @@
 
 Keep the sales pitch in your Discord post. Clear headings, Markdown, custom emojis, mentions, and several products in one seller-authored message are supported. Buyers use **Apps → Request a Deal** to choose a detected product or pack, one of its payment methods, and a quantity. DealBot calculates the total from that offer; the buyer does not enter a replacement price.
 
-Run `/listing-format` for a private guide. On your own post, open **Apps → Preview Listing** to privately review the products, prices, pack sizes, stock, and warnings that were detected. The preview reads the current post, does not create a deal, and has pages of five products.
+Use `/help` for the short buying guide. On your own post, open **Apps → Preview Listing** to privately review the products, prices, pack sizes, stock, and warnings that were detected. The preview reads the current post, does not create a deal, and has pages of five products.
 
 ## Separate products with alternative prices
 
@@ -26,7 +26,7 @@ Open a ticket to buy!
 
 Special Rank and Emerald Rank are separate choices. Their prices are not shared. Keep only the payment lines you accept for each product. These are separate alternatives, not currency exchange rates. The prices here are examples, not market valuations.
 
-Discord custom currency emojis such as the server's `Money`, `gold`, `RedBlock`, and `Sky1_Notch` can identify their corresponding supported payment methods. Custom emoji names may also identify product headings, such as a bow or golden apple. Message, channel, role, and emoji IDs are never used as prices. Marketing mentions are not repeated as notifications by the bot.
+Discord custom currency emojis such as the server's `Money`, `gold`, `RedBlock`, `redstone_dust`, and `Sky1_Notch` can identify their corresponding supported payment methods. `redstone_dust` is recognized as Redblocks; it does not add another currency. Custom emoji names may also identify product headings, such as a bow or golden apple. Message, channel, role, and emoji IDs are never used as prices. Marketing mentions are not repeated as notifications by the bot.
 
 ## Packs and variants remain distinct
 
@@ -46,6 +46,34 @@ Each line is a separate offer. The buyer chooses between Punch I and Punch II, o
 Explicit book, potion, stew, rod, XP, and golden-apple quantities are recognized in supported pack offers. An offer such as `90 Xp = 1 Sky1 Notchs` is distinct from `180 Xp = 2 Sky1 Notchs`. A bare quantity under a recognized Golden Apple heading can identify an apple pack. The deal records the detected offer and its source link. New requests also save the original message text locally in SQLite, preserving marketing descriptions and enchantment details for later review without sending the post to an external parsing service.
 
 The buyer selects a whole number of products or packs from **1 to 999**. Positive advertised stock does not change this quantity limit or prove that the seller can fulfill the order.
+
+## Shared armour-set prices
+
+A seller can describe each component and its stock before giving prices for the complete set:
+
+```text
+# Selling Redpvp Armour Sets
+# <:Helm:1460422629465919539>
+- Protection IV and Unbreaking III
+Stock: 86
+# <:Chest:1460422475291562090>
+- Protection IV and Unbreaking III
+Stock: 56
+# <:Leggings:1460422360988520610>
+- Protection IV and Unbreaking III
+Stock: 76
+# <:boot:1460422694922096875>
+- Protection IV, Unbreaking III, and Depth Strider III
+Stock: 45
+# <:diamond_sword:1135755525997482044>
+- Sharpness IV, FireAspect II, and no knockback
+Stock: 43
+# Prices
+- 1 Set : 32 <:redstone_dust:691841117012099164>
+- 10 Sets : 4 <:gold:1416700594428575865>
+```
+
+These shared prices produce two offers under Redpvp Armour Sets: **1 Set for 32 Redblocks** and **10 Sets for 4 Golds**. Buying two of the 10-set offer means 20 sets for 8 Golds. Component stock is not carried into these offers or converted into a complete-set count; the seller must verify fulfillment. Decorative Prices or arrow headings do not become the product name. Use Preview Listing to check the detected packs before accepting orders.
 
 ## Stack notation
 
@@ -91,8 +119,8 @@ Detection runs locally and does not require an external AI service or API key. I
 
 Prices must appear in message text. Images can accompany the post, but image-only prices, embed-only prices, and bot-authored posts do not supply automatic request terms. Up to 100 detected products and 10,000 text characters are supported; detected product names are limited to 200 characters. Buyer menus paginate rather than losing offers beyond Discord's menu limit.
 
-## Negotiated requests
+## Start and track a request
 
-`/deal` remains a separate route for a price agreed directly with a seller. Its manually entered total does **not** enforce any market post's prices. If your server requires published prices for every purchase, direct buyers to **Request a Deal** and have sellers review or decline unsuitable manual offers.
+Use **Apps → Request a Deal** on the seller's post. `/deal` now opens a simple guide with **My Deals**; it has no manual seller or price options. The buyer selects only from the detected offers. After acceptance, follow the private conversation buttons, and use My Deals to open or hide an eligible active conversation.
 
 DealBot records the request, conversation, and participant confirmations. It does not hold funds, verify payments, guarantee delivery, or replace the seller's payment and inventory checks.

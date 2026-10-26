@@ -1,30 +1,28 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('help')
-        .setDescription('Learn how to buy market listings and track a private escrow deal')
+        .setDescription('Learn the three steps to buy from a market post and manage your deals')
         .setDMPermission(false),
 
     async execute(interaction) {
-        const embed = new EmbedBuilder()
-            .setColor(0x5865F2)
-            .setTitle('DealBot Help')
-            .setDescription('Choose a seller\'s product or pack, payment option, and quantity, then track your deal in a private thread.')
+        if (!interaction.guildId) {
+            return interaction.reply({ content: 'Open /help inside your marketplace server.', ephemeral: true, allowedMentions: { parse: [] } });
+        }
+        const embed = new EmbedBuilder().setColor(0x5865F2).setTitle('DealBot · Quick Guide')
+            .setDescription('**Buy from the post. Follow the deal buttons. Find everything in My Deals.**')
             .addFields(
-                { name: 'Easiest: Start from a Market Post', value: 'Right-click the seller\'s listing → **Apps → Request a Deal**. Choose a product or pack, then one of its offered methods and a quantity from **1 to 999**. Totals come from that offer; buyers cannot edit prices. Two packs of a 9-book offer mean 18 books. The seller accepts or declines.' },
-                { name: 'Sellers: Posts and Preview', value: 'Sales descriptions, Markdown, custom emojis, mentions, and several products per post are supported when prices are clear. Use **Apps → Preview Listing** on your own post to review what was detected. `/listing-format` has examples and an optional simple template. Stock 0 prevents ordering; positive stock is not reserved. Edits require reopening a picker; created requests keep their terms.' },
-                { name: 'Or Use /deal · Choose One Option', value: '`/deal seller:@seller item:Menace Cape payment:Money amount:2`\n`/deal seller:@seller item:Menace Cape payment:Golds amount:45`\n`/deal seller:@seller item:Menace Cape payment:Redblocks amount:20 unit:Stacks`\n`/deal seller:@seller item:Menace Cape payment:Sky 1 Notchs amount:20`\nThese show separate example offers, not currency exchange rates.' },
-                { name: 'Offer Privacy', value: 'Offers go to the seller by DM. If their DMs are closed, the request is cancelled without posting its details in the hub. If you agree to share the item and payment details there, explicitly use `/deal public-offer:true`. Requests opened from a market post keep the private default.' },
-                { name: 'Amounts and Stacks', value: 'In **Request a Deal**, quantity counts the selected product or pack. In the separate negotiated **/deal**, `amount` is the total payment and post prices are not enforced. Money uses USD with up to two decimals. **1 stack = 64 items**. In post prices, `5.32 Stack` means 5 stacks + 32 items (352); `1.20 Stack` means 84. There is no automatic currency conversion.' },
-                { name: 'Follow the Steps', value: '1. Buyer confirms payment was sent.\n2. Seller verifies payment independently, delivers, and confirms delivery.\n3. Buyer checks the item or service and confirms receipt.\nA completed deal adds one successful deal to each participant\'s record in this server.' },
-                { name: 'Track Your Deals', value: '`/deals` — Private dashboard with filters, pages, and deal details. Choose **Needs your action** for your next steps, or **All deals** for history. Resume an archived active conversation if you still have access.\n`/deal-status reference:ESC-…` — Details, activity, and restored controls inside the deal thread.\n`/profile user:@member` — A user\'s trust record and rank in this server.' },
-                { name: 'Disputes and Closing', value: 'Use **Open Dispute** in an active deal to explain the problem to staff. After resolution, both participants can approve closing, or staff can close it. Finished conversations archive after 30 minutes without messages by default; administrators can change this. Active and disputed deals are excluded from cleanup. Archives queue transcript delivery with retries. Use `/transcript reference:ESC-…` to privately download a saved file.' },
-                { name: 'Server Trust and Rewards', value: 'Trust points, scam flags, and rank overrides are local to this server. A pair of traders can earn 5 points each only once per rolling 24 hours here; repeated completed deals still count as successful deals but add no extra points during that window. Manual administrator rank overrides are labeled separately from earned points in /profile.' },
-                { name: 'Administrator Setup', value: '`/setup` — Read-only configuration and permission checklist.\n`/stats` — Private server activity counts for the last 30 days.\n`/set-hub-channel` — A regular text channel for private threads.\n`/set-mod-role` — Staff authorized to review disputes.\n`/set-thread-policy` — Finished-conversation cleanup delay, or Off.\n`/set-rank-role` — Optional cosmetic roles for trust ranks.\n`/set-rank` — Set a local manual rank override, or choose Earned to reset it.\n`/review-flag` — Review and clear an active local scam flag with an audited reason.\n`/set-language` — English is the bot\'s language.' },
-                { name: 'How Payments Work', value: 'DealBot tracks confirmations and conversations. It does not hold funds, send refunds, or independently verify a payment. Participants must check the payment and delivery themselves.' },
+                { name: '1 · Request from the Seller\'s Post', value: 'Open the message menu → **Apps → Request a Deal**. Choose a product or pack, a payment option, and quantity. The post determines the total; you do not enter a price. The seller receives your request privately and accepts or declines. If their DMs are closed, the request is cancelled privately; ask them to enable DMs and try again.' },
+                { name: '2 · Follow Your Private Conversation', value: 'The buyer confirms payment was sent. The seller checks it independently, delivers, and confirms delivery. The buyer checks the item and confirms receipt. Use **Open Dispute** if staff need to help. DealBot records confirmations; it does not hold funds, make refunds, or verify transfers.' },
+                { name: '3 · Use My Deals', value: 'Use the button below or `/deals` for your requests, next actions, and history. Select a deal to open its conversation or available saved transcript. Quiet conversations can be tucked away without ending the deal; open an active conversation from My Deals when you need it again. `/profile` shows the trust record in this server.' },
+                { name: 'Selling?', value: 'Keep your descriptions, emojis, and mentions. State product headings and prices clearly, then open **Apps → Preview Listing** on your own message to check what was detected. Different pack offers keep their own prices. A quantity counts packs. **1 stack = 64**; `5.32 Stack` means 5 stacks and 32 items. Stock 0 prevents ordering; positive stock is not reserved.' },
+                { name: 'Server Administrator', value: 'Configuration is grouped under `/setup`. Start with `/setup hub` and `/setup staff`, then run `/setup check`. `/setup threads` adjusts conversation organization. Rank tools, flag reviews, and statistics are optional subcommands. Regular traders can use the message menu and My Deals.' },
             )
-            .setFooter({ text: 'DealBot • English throughout • /ping checks latency' });
-        return interaction.reply({ embeds: [embed], ephemeral: true });
+            .setFooter({ text: 'DealBot • Private deal coordination and records • English' });
+        const controls = new ActionRowBuilder().addComponents(new ButtonBuilder()
+            .setCustomId(`deals_page_${interaction.guildId}:${interaction.user.id}:active:1:refresh`)
+            .setLabel('My Deals').setStyle(ButtonStyle.Primary));
+        return interaction.reply({ embeds: [embed], components: [controls], ephemeral: true, allowedMentions: { parse: [] } });
     },
 };

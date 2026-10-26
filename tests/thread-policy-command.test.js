@@ -12,7 +12,7 @@ after(() => db.close());
 function input({ guildId = 'market', admin = true, minutes = 15 } = {}) {
     const replies = [];
     return { guildId, memberPermissions: new PermissionsBitField(admin ? [PermissionFlagsBits.Administrator] : []),
-        options: { getInteger: () => minutes }, replies, reply: async payload => { replies.push(payload); } };
+        options: { getInteger: name => name === 'archive-after' ? minutes : null }, replies, reply: async payload => { replies.push(payload); } };
 }
 
 test('thread cleanup policy requires an administrator in a server before changing settings', async () => {
@@ -34,7 +34,7 @@ test('thread cleanup command changes only its server and truthfully explains ret
     assert.equal(reply.ephemeral, true);
     assert.deepEqual(reply.allowedMentions, { parse: [] });
     assert.match(reply.content, /15 minutes/);
-    assert.match(reply.content, /Active and disputed deals are excluded/);
+    assert.match(reply.content, /Disputed deals are excluded/);
     assert.match(reply.content, /Records and saved transcripts are kept/);
     assert.match(reply.content, /no channels are deleted/);
     const disable = input({ minutes: 0 });
@@ -44,7 +44,7 @@ test('thread cleanup command changes only its server and truthfully explains ret
 });
 
 test('invalid thread policy values do not mutate the default', async () => {
-    for (const minutes of [-1, 10, 30.5, null, '30']) {
+    for (const minutes of [-1, 10, 30.5, '30']) {
         const interaction = input({ minutes });
         await command.execute(interaction);
         assert.equal(getThreadCleanupMinutes('market'), 30);

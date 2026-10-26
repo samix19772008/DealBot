@@ -57,8 +57,11 @@ test('actual global command definitions retain server-only privacy restrictions'
     const commands = commandDefinitions();
     assert.ok(commands.some(command => command.name === 'deal'));
     assert.ok(commands.some(command => command.name === 'setup'));
-    assert.ok(commands.some(command => command.name === 'stats'));
-    assert.ok(commands.some(command => command.name === 'review-flag'));
+    assert.equal(commands.length, 9);
+    const setup = commands.find(command => command.name === 'setup');
+    assert.ok(setup.options.some(option => option.name === 'stats'));
+    assert.ok(setup.options.some(option => option.name === 'review-flag'));
+    assert.ok(!commands.some(command => ['stats', 'review-flag', 'set-hub-channel', 'ping', 'listing-format'].includes(command.name)));
     for (const command of commands) assert.equal(command.dm_permission, false, command.name);
 });
 

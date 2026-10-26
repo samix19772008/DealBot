@@ -34,16 +34,18 @@ test('dashboard navigation routes bound payloads without treating them as numeri
     }
 });
 
-test('only resume bypasses original-thread routing and still shares the background deal lock', async () => {
+test('dashboard conversation and transcript controls bypass original-thread routing and share the background deal lock', async () => {
     const deal = accepted();
     assert.equal(router.processingDeals, processingDeals);
     let calls = 0;
     const client = { buttons: [
         { id: 'deals_resume_', execute: async () => { assert.ok(processingDeals.has(String(deal.id))); calls++; } },
+        { id: 'deals_hide_', execute: async () => { assert.ok(processingDeals.has(String(deal.id))); calls++; } },
+        { id: 'deals_transcript_', execute: async () => { assert.ok(processingDeals.has(String(deal.id))); calls++; } },
         { id: 'confirm_payment_', execute: async () => assert.fail('Thread action escaped its conversation') },
     ] };
-    await router.execute(input(`deals_resume_${deal.id}`), client);
-    assert.equal(calls, 1);
+    for (const prefix of ['deals_resume_', 'deals_hide_', 'deals_transcript_']) await router.execute(input(`${prefix}${deal.id}`), client);
+    assert.equal(calls, 3);
     assert.equal(processingDeals.size, 0);
     const originalAction = input(`confirm_payment_${deal.id}`);
     await router.execute(originalAction, client);
@@ -51,15 +53,15 @@ test('only resume bypasses original-thread routing and still shares the backgrou
     processingDeals.add(String(deal.id));
     const busy = input(`deals_resume_${deal.id}`);
     await router.execute(busy, client);
-    assert.equal(calls, 1);
+    assert.equal(calls, 3);
     assert.match(busy.replies[0].content, /Another action/);
 });
 
-test('cross-server and DM resume controls never reach the handler', async () => {
+test('cross-server and DM conversation or download controls never reach the handler', async () => {
     const deal = accepted();
-    for (const guildId of ['other-market', null]) {
-        const interaction = input(`deals_resume_${deal.id}`, guildId);
-        await router.execute(interaction, { buttons: [{ id: 'deals_resume_', execute: async () => assert.fail('Wrong scope resumed') }] });
+    for (const prefix of ['deals_resume_', 'deals_hide_', 'deals_transcript_']) for (const guildId of ['other-market', null]) {
+        const interaction = input(`${prefix}${deal.id}`, guildId);
+        await router.execute(interaction, { buttons: [{ id: prefix, execute: async () => assert.fail('Wrong scope action') }] });
         assert.equal(interaction.replies[0].ephemeral, true);
         assert.match(interaction.replies[0].content, /different server|inside the deal thread/);
     }

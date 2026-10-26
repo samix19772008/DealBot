@@ -2,6 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { setLanguage } = require('../../database/guildSettingsRepository');
 
 module.exports = {
+    registered: false,
     data: new SlashCommandBuilder()
         .setName('set-language')
         .setDescription('Use English for every DealBot message in this server')

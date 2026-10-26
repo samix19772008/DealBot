@@ -5,6 +5,7 @@ const { getRankByKey, getRankForScore, RANKS } = require('../../utils/ranks');
 const { syncMemberRankRole } = require('../../utils/roleSync');
 
 module.exports = {
+    registered: false,
     data: new SlashCommandBuilder()
         .setName('set-rank')
         .setDescription('Set or reset a member\'s manual rank override in this server')

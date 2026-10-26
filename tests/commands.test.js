@@ -139,7 +139,7 @@ test('/deal-status permits participants and configured staff, including recorded
     }
 });
 
-test('/deal rejects unsupported, fractional-game, and invalid payments before creating a request', async () => {
+test('the legacy offer helper rejects unsupported, fractional-game, and invalid payments before creating a request', async () => {
     cleanDatabase();
     for (const [method, amount, unit] of [['bitcoin', 2, 'each'], ['money', 0, 'each'], ['money', 1.001, 'each'], ['money', 2, 'stacks'], ['golds', 2.5, 'each']]) {
         const input = interaction({ options: {
@@ -147,7 +147,7 @@ test('/deal rejects unsupported, fractional-game, and invalid payments before cr
             getNumber: () => amount,
             getUser: () => discordUser('seller'),
         } });
-        await command('deal').execute(input);
+        await command('deal').executeLegacyRequest(input);
         assert.equal(input.replies[0].ephemeral, true);
         assert.match(input.replies[0].content, /Choose one payment|amount|Money|whole number/);
         assert.equal(db.prepare('SELECT COUNT(*) AS n FROM escrow_transactions').get().n, 0);
@@ -183,9 +183,9 @@ test('/help explains manual payment tracking and the available workflow', async 
     const json = input.replies[0].embeds[0].toJSON();
     assert.equal(input.replies[0].ephemeral, true);
     assert.match(JSON.stringify(json), /does not hold funds/);
-    assert.ok(json.fields.some(field => field.value.includes('/deal-status')));
-    assert.match(JSON.stringify(json), /public-offer:true/);
-    assert.match(JSON.stringify(json), /cancelled without posting/);
+    assert.ok(json.fields.some(field => field.value.includes('My Deals')));
+    assert.match(JSON.stringify(json), /Request a Deal/);
+    assert.match(JSON.stringify(json), /cancelled privately/);
     assert.ok(JSON.stringify(json).length < 6000);
 });
 

@@ -163,6 +163,60 @@ test('different offers in a decorated stock post keep their own bundles, currenc
     assert.equal(f.calls.dm.length, 1);
 });
 
+test('the exact Redpvp advertisement orders two ten-set packs for eight Golds and preserves their original terms', async () => {
+    const f = fixture(posts.redpvp);
+    const { token, session, menu } = await f.open();
+    assert.equal(menu.options.length, 2);
+    const single = findProduct(session, /Redpvp Armour Sets · 1 Set$/);
+    const ten = findProduct(session, /Redpvp Armour Sets · 10 Sets$/);
+    assert.deepEqual(single.options.map(option => option.key), ['redblocks']);
+    assert.equal(single.options[0].amount, 32);
+    assert.equal(ten.bundleQuantity, 10);
+    assert.equal(ten.stock, null);
+
+    await productSelection.execute(f.chooseProduct(token, ten.id));
+    const paymentMenu = menuIn(f.calls.updates.at(-1));
+    assert.deepEqual(paymentMenu.options.map(option => option.value), ['golds']);
+    await paymentSelection.execute(f.choosePayment(token, ten.id, 'redblocks'));
+    await offerModal.execute(f.modal(token, ten.id, 'redblocks', '2'));
+    assert.equal(f.calls.modals.length, 0, 'A payment from the one-set offer must not be accepted for the ten-set pack');
+    assert.equal(f.calls.dm.length, 0);
+    assert.equal(f.deals().length, 0);
+
+    await paymentSelection.execute(f.choosePayment(token, ten.id, 'golds'));
+    assert.equal(f.calls.modals.at(-1).custom_id, `deal_offer_modal_v3_${token}_${ten.id}_golds`);
+    assert.match(f.calls.modals.at(-1).components[0].components[0].label, /pack/i);
+    await offerModal.execute(f.modal(token, ten.id, 'golds', '2'));
+    const [deal] = f.deals();
+    assert.ok(deal, f.allText());
+    assert.equal(f.deals().length, 1);
+    assert.equal(deal.amount, 8);
+    assert.equal(deal.currency, 'Golds');
+    assert.equal(deal.payment_unit, 'each');
+    assert.match(deal.item_description, /Redpvp Armour Sets · 10 Sets/);
+    assert.match(deal.item_description, /Quantity: 2 packs/);
+    assert.match(deal.item_description, /Total items: 20 Sets/);
+    const terms = getEscrowListingTerms(deal.id);
+    assert.equal(terms.product_key, ten.id);
+    assert.equal(terms.quantity, 2);
+    assert.equal(terms.bundle_quantity, 10);
+    assert.equal(terms.bundle_unit, 'Sets');
+    assert.equal(terms.method_key, 'golds');
+    assert.equal(terms.unit_amount, 4);
+    assert.equal(terms.total_amount, 8);
+    assert.equal(terms.advertised_stock, null);
+    assert.equal(terms.source_content, posts.redpvp);
+    assert.equal(terms.source_fingerprint, listingFingerprint(f.message));
+    assert.equal(f.calls.dm.length, 1);
+    assert.deepEqual(f.calls.dm[0].allowedMentions, { parse: [] });
+
+    f.message.content = posts.redpvp.replace('10 Sets : 4', '10 Sets : 8');
+    f.message.editedTimestamp = Date.now();
+    ten.bundleQuantity = 99;
+    assert.deepEqual(getEscrowListingTerms(deal.id), terms,
+        'Editing the source or an in-memory menu cannot rewrite an already agreed bundle or payment');
+});
+
 test('bows, XP levels, and Golden Apple packs remain individually selectable in the same post', async () => {
     const f = fixture(posts.skypvp);
     const { session } = await f.open();

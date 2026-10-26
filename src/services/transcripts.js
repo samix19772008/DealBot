@@ -163,6 +163,9 @@ function createTranscriptService({
     async function captureAndSend(thread, observedTimestamp) {
         const escrow = findEscrow(thread.id);
         if (!escrow || thread.guildId !== escrow.guild_id) return { skipped: true };
+        // Putting an ongoing conversation away is a visibility action, not a
+        // closure. Its messages remain in Discord for the eventual final export.
+        if (!['completed', 'cancelled', 'refunded'].includes(escrow.status)) return { skipped: true };
         const closure = recordArchive(escrow.id, observedTimestamp);
         const archive = repository.enqueue({ escrow, closure, filename: transcriptFilename(escrow), now: clock() });
         const all = repository.recipients(archive.id);

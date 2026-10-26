@@ -3,7 +3,7 @@ const {
     ChannelType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits,
 } = require('discord.js');
 const { getEscrowById, acceptEscrow } = require('../../database/escrowRepository');
-const { getGuildSettings } = require('../../database/guildSettingsRepository');
+const { getGuildSettings, getActiveThreadIdleMinutes } = require('../../database/guildSettingsRepository');
 const { buildDealEmbed } = require('../../utils/embedTemplate');
 const { dealThreadName } = require('../../utils/threadPresentation');
 
@@ -50,11 +50,11 @@ module.exports = {
         }
         const settings = getGuildSettings(escrow.guild_id);
         if (!settings?.hub_channel_id) {
-            return reject('The escrow hub is not configured. Ask an administrator to run `/set-hub-channel`.');
+            return reject('The escrow hub is not configured. Ask an administrator to run `/setup hub`.');
         }
         const hub = await guild.channels.fetch(settings.hub_channel_id).catch(() => null);
         if (!hub || hub.type !== ChannelType.GuildText) {
-            return reject('The escrow hub must be an accessible regular text channel. Ask an administrator to update `/set-hub-channel`.');
+            return reject('The escrow hub must be an accessible regular text channel. Ask an administrator to update `/setup hub`.');
         }
 
         const [botMember, buyerMember, sellerMember] = await Promise.all([
@@ -97,7 +97,10 @@ module.exports = {
                     { label: 'Agreed Amount', value: formatPayment(escrow) },
                     { label: 'Next Step', value: 'The buyer confirms payment has been sent. The seller must independently verify receipt before delivering.' },
                     { label: 'Payment Tracking', value: 'DealBot records your confirmations. It does not hold, transfer, or verify money or items.' },
-                    { label: 'Your Deals', value: 'Use `/deals` for your private dashboard, action reminders, and conversation links.' },
+                    { label: 'Your Deals', value: 'Open My Deals from `/deal` to see all your requests and conversations. Hide this conversation below to put it away without ending the deal.' },
+                    { label: 'Keep Your Sidebar Tidy', value: getActiveThreadIdleMinutes(escrow.guild_id)
+                        ? `This active conversation is put away after ${getActiveThreadIdleMinutes(escrow.guild_id)} minutes without activity. Open it again from My Deals. Your deal stays active and its messages are kept.`
+                        : 'Automatic hiding is disabled here. You can still use Hide Conversation and open it again from My Deals.' },
                 ],
                 footerNote: 'Open a dispute below if you need moderator assistance',
             });
@@ -107,6 +110,8 @@ module.exports = {
                     .setLabel('Open Dispute')
                     .setStyle(ButtonStyle.Danger)
                     .setEmoji('⚠️'),
+                new ButtonBuilder().setCustomId(`deals_hide_${escrow.id}`)
+                    .setLabel('Hide Conversation').setStyle(ButtonStyle.Secondary),
             );
             await thread.send({
                 content: `<@${escrow.buyer_discord_id}> <@${escrow.seller_discord_id}>`,

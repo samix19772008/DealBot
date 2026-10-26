@@ -1,31 +1,33 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { sendDealOffer } = require('../../utils/dealOffer');
 const { validateDealInput } = require('../../utils/validation');
-const { PAYMENT_METHODS, resolvePayment } = require('../../utils/payments');
+const { resolvePayment } = require('../../utils/payments');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('deal')
-        .setDescription('Buy a listed item using one agreed payment method')
-        .setDMPermission(false)
-        .addUserOption(option => option
-            .setName('seller').setDescription('The seller you want to deal with').setRequired(true))
-        .addStringOption(option => option
-            .setName('item').setDescription('The listed item or service you are buying')
-            .setMinLength(1).setMaxLength(1000).setRequired(true))
-        .addStringOption(option => option
-            .setName('payment').setDescription('Choose one method offered by the seller').setRequired(true)
-            .addChoices(...PAYMENT_METHODS.map(method => ({ name: method.label, value: method.key }))))
-        .addNumberOption(option => option
-            .setName('amount').setDescription('Total agreed payment, not the quantity of the item you are buying')
-            .setMinValue(0.01).setMaxValue(9999999999.99).setRequired(true))
-        .addStringOption(option => option
-            .setName('unit').setDescription('For game payments: individual items or stacks of 64 (default: Each)')
-            .addChoices({ name: 'Each', value: 'each' }, { name: 'Stacks (64 each)', value: 'stacks' }))
-        .addBooleanOption(option => option
-            .setName('public-offer').setDescription('Allow the offer details in the hub if the seller cannot receive DMs')),
+        .setDescription('Start buying from a seller\'s post or open your private deals')
+        .setDMPermission(false),
 
     async execute(interaction) {
+        if (!interaction.guildId) {
+            return interaction.reply({ content: 'Open /deal inside your marketplace server.', ephemeral: true, allowedMentions: { parse: [] } });
+        }
+        const embed = new EmbedBuilder().setColor(0x5865F2).setTitle('Buy from a Market Post')
+            .setDescription('**1.** Right-click the seller\'s post, or open its message menu on mobile.\n**2.** Choose **Apps → Request a Deal**.\n**3.** Select the product, payment option, and quantity.\n\nDealBot calculates the price from the post and sends your request to the seller. After acceptance, follow the buttons in your private conversation.')
+            .addFields({ name: 'Already have a deal?', value: 'Open **My Deals** below to see your requests, next actions, and conversations.' })
+            .setFooter({ text: 'DealBot tracks confirmations and records. It does not hold or verify payments.' });
+        const controls = new ActionRowBuilder().addComponents(new ButtonBuilder()
+            .setCustomId(`deals_page_${interaction.guildId}:${interaction.user.id}:active:1:refresh`)
+            .setLabel('My Deals').setStyle(ButtonStyle.Primary));
+        return interaction.reply({ embeds: [embed], components: [controls], ephemeral: true, allowedMentions: { parse: [] } });
+    },
+    executeLegacyRequest,
+};
+
+// Kept for offline compatibility checks of the shared offer flow. It is not a
+// registered command or an interaction route; buyers use the source post.
+async function executeLegacyRequest(interaction) {
         let details;
         try {
             const payment = resolvePayment({
@@ -46,5 +48,4 @@ module.exports = {
             allowPublicOffer: interaction.options.getBoolean?.('public-offer') ?? false,
             ...details,
         });
-    },
-};
+}

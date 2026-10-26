@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('disc
 const { getGuildStats } = require('../../database/reputationRepository');
 
 module.exports = {
+    registered: false,
     data: new SlashCommandBuilder()
         .setName('stats')
         .setDescription('Privately view aggregate escrow activity for this server over the last 30 days')

@@ -6,7 +6,8 @@ const { loadCommands } = require('./src/handlers/commandHandler');
 function commandDefinitions() {
     const holder = {};
     loadCommands(holder);
-    return [...holder.commands.values()].map(command => command.data.toJSON());
+    return [...holder.commands.values()].filter(command => command.registered !== false)
+        .map(command => command.data.toJSON());
 }
 
 function deploymentOptions(argv = process.argv.slice(2)) {

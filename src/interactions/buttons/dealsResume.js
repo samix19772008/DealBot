@@ -1,13 +1,15 @@
 const { ChannelType, PermissionFlagsBits } = require('discord.js');
 const { getEscrowById } = require('../../database/escrowRepository');
 const { markThreadReopened } = require('../../database/transcriptRepository');
+const { rescheduleActiveThreadCleanup } = require('../../database/activeThreadOrganizationRepository');
 const { isModerator } = require('../../utils/permissions');
 
 const ACTIVE_CONVERSATIONS = new Set(['awaiting_payment', 'funded', 'delivered', 'disputed']);
 const PARTICIPANT_PERMISSIONS = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessagesInThreads];
 const BOT_PERMISSIONS = [...PARTICIPANT_PERMISSIONS, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageThreads];
 
-function createResumeHandler({ getDeal = getEscrowById, moderator = isModerator, reopened = markThreadReopened } = {}) {
+function createResumeHandler({ getDeal = getEscrowById, moderator = isModerator, reopened = markThreadReopened,
+    reschedule = rescheduleActiveThreadCleanup } = {}) {
     return {
         id: 'deals_resume_',
         async execute(interaction, suppliedClient) {
@@ -89,6 +91,7 @@ function createResumeHandler({ getDeal = getEscrowById, moderator = isModerator,
                         if (!actual || actual.guildId !== original.guild_id || actual.type !== ChannelType.PrivateThread || actual.archived) throw error;
                     }
                     reopened(latest.id);
+                    reschedule(latest.id);
                 }
                 return finish(`Continue in your private deal conversation: https://discord.com/channels/${original.guild_id}/${original.channel_id}`);
             } catch (error) {

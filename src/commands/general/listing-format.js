@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { LISTING_TEMPLATE } = require('../../utils/listings');
 
 module.exports = {
+    registered: false,
     data: new SlashCommandBuilder()
         .setName('listing-format')
         .setDescription('Learn how market posts, product packs, and fixed prices are read')

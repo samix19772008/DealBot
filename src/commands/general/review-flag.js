@@ -4,6 +4,7 @@ const { getGuildReputation, clearGuildScamFlag } = require('../../database/reput
 const { syncMemberRankRole } = require('../../utils/roleSync');
 
 module.exports = {
+    registered: false,
     data: new SlashCommandBuilder()
         .setName('review-flag')
         .setDescription('Review and clear an active scam flag in this server, preserving its history')

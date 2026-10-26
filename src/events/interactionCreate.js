@@ -39,7 +39,7 @@ async function executeAction(interaction, handler) {
         return report(interaction, 'This request has ended or expired. Use /deal to start a new request.');
     }
     const isPendingOfferAction = DM_ACTIONS.has(handler.id) && escrow.status === 'pending';
-    const isDashboardResume = handler.id === 'deals_resume_' && Boolean(interaction.guildId);
+    const isDashboardResume = ['deals_resume_', 'deals_hide_', 'deals_transcript_'].includes(handler.id) && Boolean(interaction.guildId);
     if (!interaction.guildId && !isPendingOfferAction) {
         return report(interaction, 'Use the current controls inside the deal thread.');
     }

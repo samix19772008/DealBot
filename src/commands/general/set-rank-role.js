@@ -4,6 +4,7 @@ const { RANKS, getRankByKey } = require('../../utils/ranks');
 const { isSafeRankRole } = require('../../utils/roleSync');
 
 module.exports = {
+    registered: false,
     data: new SlashCommandBuilder()
         .setName('set-rank-role')
         .setDescription('Link a trust rank to a safe, automatically assigned Discord role')

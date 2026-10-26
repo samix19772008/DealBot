@@ -7,20 +7,26 @@ These files prepare deployment. They do not buy hosting, create a server, change
 ## Prepare a private rehearsal
 
 1. Keep the existing `.env` and database, including WAL/SHM sidecars if present. Take a verified backup before upgrading. A release download contains source, not the live token or database.
-2. Use a private Discord server with separate buyer, seller, and moderator accounts. Configure the hub and moderator role, then run `/setup` until the required checks pass.
+2. Use a private Discord server with separate buyer, seller, and moderator accounts. Configure the hub and moderator role, then run `/setup check` until the required checks pass.
 3. Refresh command definitions with `npm run commands:deploy` from a checkout with the intended `.env`. This is the step that contacts Discord to register commands; offline validation does not register them.
 4. Start the new version using one deployment method. Review its logs and health result before making a request.
 5. Run the private acceptance sequence below, including a restart and backup restoration. Record the release, results, and any unresolved errors before announcing availability.
 
+## Simple command surface
+
+Version 1.8 registers nine definitions: `/deal`, `/deals`, `/help`, `/profile`, `/deal-status`, `/transcript`, `/setup`, and the message actions **Request a Deal** and **Preview Listing**. Refresh guild and any installed global definitions after upgrading. This removes the old standalone administrative and redundant commands from Discord's menu.
+
+The normal buying route is **seller post → Apps → Request a Deal → offered product/payment/quantity → seller acceptance → conversation buttons**. `/deal` is a guide with a My Deals button, without a manual price form. Grouped Administrator actions are `/setup check`, `hub`, `staff`, `threads`, `rank-role`, `rank`, `review-flag`, and `stats`. Existing settings remain through the upgrade.
+
 ## Conversation organization
 
-Version 1.7 adds `/set-thread-policy` and updates `/deals`; refresh guild or global command definitions as appropriate for the installation. Startup adds the cleanup queue and per-server policy without deleting existing records. New servers and upgraded servers default to **30 minutes** of inactivity before finished conversations are locked and archived. Administrators can choose 15, 30, 60, or 1,440 minutes, or Off. Use `/set-thread-policy archive-after` in each server to change it.
+Two per-server policies are independent. `/setup threads idle-after` chooses active-conversation hiding after Off, 5, 15, 30, or 60 idle minutes; the default is **15**. `/setup threads archive-after` chooses finished-conversation closure after Off, 15, 30, 60, or 1,440 idle minutes; the default is **30**. Omitted settings retain their current values. Startup adds the active queue/setting alongside the existing finished queue without deleting records.
 
-Only `completed`, `cancelled`, and `refunded` deals with a conversation are eligible. The worker checks roughly once per minute in batches of five and defers a thread when recent messages or a reopening restart its idle interval. It also tidies existing finished, unarchived threads. Already archived historical conversations are marked processed without recapturing or resending their transcripts. Queued cleanup and retries persist in SQLite. No conversation, deal record, or captured file is deleted by this policy.
+Active hiding applies only to `awaiting_payment`, `funded`, and `delivered` conversations. It archives without locking, completing, cancelling, or sending a completion transcript. Pending requests and disputed deals are excluded. The **Hide Conversation** button lets a participant archive an eligible conversation immediately for both participants, not just their own sidebar. **Open Conversation** in My Deals can reopen an active conversation after checking current server permissions and private-thread membership. Removed participants are not automatically added back; staff locks require currently authorized local staff with Manage Threads.
 
-Pending, accepted, paid, delivered, and disputed deals are excluded from finished-thread cleanup. New deal threads still use Discord's separate 24-hour inactivity auto-archive setting; archiving does not change their deal state. A participant can select an accepted active deal in the private `/deals` dashboard and use **Resume Conversation**, subject to current server access, thread permissions, and private-thread membership. Removed members are not added automatically. Ordinary participants cannot unlock a locked thread; authorized local staff must also have current Manage Threads permission. Finished conversations remain archived.
+Finished cleanup applies only to `completed`, `cancelled`, and `refunded` conversations. It locks and archives after the policy interval and queues the final transcript. Recent messages or a reopening defer the relevant worker. Each queue uses bounded batches on approximately one-minute ticks, so backlogs can delay organization. Work and retry progress persist in SQLite. Already archived history is marked processed without recapturing or resending it. No conversation, deal record, captured file, or backup is deleted.
 
-Several trades remain separate private threads under one hub; a shared thread would mix participants and evidence. New names such as `deal-0042-menace-cape` keep them short. `/deals` provides six entries per page, Active/Needs your action/Completed/All filters, navigation, and full details on selection. Its controls are bound to the requesting user and server. Plan moderation access and Discord thread capacity even with cleanup enabled.
+Different trades remain separate private threads under one hub; sharing threads would mix participants and evidence. Compact names and the private six-entry dashboard help navigation. Discord does not offer per-trader folders, and several busy conversations can remain visible at once. Native Discord inactivity archiving is separate and never changes deal state. Plan moderation access and thread capacity even with these policies enabled.
 
 ## Docker Compose
 
@@ -147,8 +153,8 @@ Use test listings and test deal confirmations with the buyer, seller, and modera
 
 | Check | Expected result |
 | --- | --- |
-| `/setup` in the intended server | All required hub and staff checks pass; optional rank mappings are clear |
-| `Preview Listing` on both decorated example styles | Separate ranks, prices, variants, and packs match the source; stock-zero offers are unavailable |
+| `/setup check` in the intended server | All required hub and staff checks pass; optional rank mappings are clear |
+| `Preview Listing` on rank, SkyPVP, and Redpvp set posts | Separate products and pack prices match the source; Redpvp offers 1 Set for 32 Redblocks and 10 Sets for 4 Golds without borrowing component stock; stock-zero offers are unavailable |
 | Buy one pack and two packs | Only that product's payment methods appear; quantity multiplies the chosen pack's price |
 | Edit or delete a post after opening its picker | Old picker cannot create a request from obsolete terms |
 | Normal completion | Buyer payment, seller delivery, buyer receipt, and local reputation advance once |
@@ -157,10 +163,11 @@ Use test listings and test deal confirmations with the buyer, seller, and modera
 | Open and resolve a dispute | Confirmation steps pause; only authorized staff resolve it; the decision is recorded |
 | Close a completed deal | The intended participants receive the recorded conversation; closer and time are correct |
 | Finished-thread cleanup | A finished idle thread is locked and archived after its policy interval and worker tick; the record names DealBot (automatic cleanup), and evidence is retained |
-| New messages, exclusions, and policy Off | Recent activity defers cleanup; active/disputed deals are excluded; disabling the policy leaves human closure available |
-| Resume an active conversation | Current authorized members can resume an archived accepted active thread; removed members and unrelated users cannot, staff locks are respected, and terminal threads stay archived |
+| New messages, exclusions, and independent Off settings | Recent activity defers each worker; active hiding excludes pending/disputed/terminal states and finished cleanup excludes active states; disabling one policy leaves the other unchanged |
+| Active conversation hiding | A quiet active thread archives without locking, ending the deal, or sending a completion transcript; Hide Conversation archives it for both participants |
+| Open an active conversation | Current authorized members can open an archived accepted active thread; removed members and unrelated users cannot, staff locks are respected, and terminal threads stay archived |
 | One participant blocks DMs | The other can still receive their transcript; failed delivery is retained for retry under the documented queue policy |
-| Private transcript recovery | A participant or authorized local moderator can use `/transcript` in the original server to retrieve an available saved conversation file |
+| Private transcript recovery | A participant or authorized local moderator can use Download Transcript or `/transcript` in the original server to retrieve an available saved conversation file |
 | Restart while delivery is pending | Saved work survives restart and already-confirmed deliveries are not deliberately sent again |
 | Restart while cleanup is pending | Saved cleanup resumes and the historical-archive scan does not resend old transcripts |
 | Restart the process or reboot the host | The same database remains, the supervisor starts the bot, and health becomes ready after Discord connects |

@@ -12,7 +12,7 @@ module.exports = {
             return deny(interaction, `This deal is ${escrow.status}; a new dispute cannot be opened.`);
         }
         if (!getGuildSettings(escrow.guild_id)?.moderator_role_id) {
-            return deny(interaction, 'A server administrator must configure a moderator role with /set-mod-role before disputes can be opened.');
+            return deny(interaction, 'A server administrator must configure a moderator role with /setup staff before disputes can be opened.');
         }
         const reason = new TextInputBuilder()
             .setCustomId('reason').setLabel('What went wrong?')

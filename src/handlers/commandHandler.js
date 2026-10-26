@@ -18,7 +18,7 @@ function loadCommands(client) {
 
             if ('data' in command && 'execute' in command) {
                 client.commands.set(command.data.name, command);
-                console.log(`[COMMAND LOADED] /${command.data.name}`);
+                if (command.registered !== false) console.log(`[COMMAND LOADED] /${command.data.name}`);
             } else {
                 console.warn(`[WARNING] ${filePath} is missing "data" or "execute".`);
             }
