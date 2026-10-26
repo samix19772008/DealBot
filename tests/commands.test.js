@@ -50,7 +50,7 @@ function interaction(options = {}) {
 
 test('every command definition is English, unique, valid, and unavailable in DMs', () => {
     const names = new Set();
-    assert.equal(commands.length, 17);
+    assert.equal(commands.length, 18);
     for (const entry of commands) {
         const data = entry.data.toJSON();
         assert.equal(data.dm_permission, false, data.name);

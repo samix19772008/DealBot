@@ -1,0 +1,47 @@
+[Unit]
+Description=DealBot Discord deal coordination service
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=dealbot
+Group=dealbot
+WorkingDirectory=/opt/dealbot
+EnvironmentFile=/etc/dealbot/dealbot.env
+Environment=NODE_ENV=production
+Environment=DATABASE_PATH=/var/lib/dealbot/escrow.sqlite
+Environment=HEALTH_STATUS_PATH=/run/dealbot/health.json
+Environment=BACKUP_INTERVAL_HOURS=24
+StateDirectory=dealbot
+StateDirectoryMode=0700
+RuntimeDirectory=dealbot
+RuntimeDirectoryMode=0700
+UMask=0077
+ExecStart=/usr/bin/node /opt/dealbot/index.js
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/dealbot /run/dealbot
+
+[Install]
+WantedBy=multi-user.target

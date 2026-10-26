@@ -55,6 +55,9 @@ module.exports = {
     name: Events.InteractionCreate,
     async execute(interaction, client) {
         try {
+            if (client.dealBotStopping) {
+                return await report(interaction, 'DealBot is restarting. Please try again in a moment; your saved deals are kept.');
+            }
             if (interaction.isChatInputCommand() || interaction.isMessageContextMenuCommand()) {
                 const command = client.commands.get(interaction.commandName);
                 if (!command) return report(interaction, 'This command is no longer available. Ask an administrator to refresh the bot commands.');

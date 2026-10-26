@@ -10,6 +10,7 @@ const client = new Client({
     ],
     partials: [Partials.Channel],
     allowedMentions: { parse: [], repliedUser: false },
+    rest: { timeout: 15_000 },
 });
 
 module.exports = client;

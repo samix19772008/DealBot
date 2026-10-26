@@ -190,3 +190,48 @@ CREATE TABLE IF NOT EXISTS escrow_listing_terms (
     advertised_stock INTEGER,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS transcript_delivery_archives (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    escrow_id INTEGER NOT NULL REFERENCES escrow_transactions(id) ON DELETE CASCADE,
+    closure_id INTEGER NOT NULL REFERENCES escrow_thread_closures(id) ON DELETE CASCADE,
+    guild_id TEXT NOT NULL,
+    thread_id TEXT NOT NULL,
+    archive_timestamp INTEGER NOT NULL,
+    escrow_json TEXT NOT NULL,
+    closure_json TEXT NOT NULL,
+    summary_json TEXT NOT NULL,
+    ready_summary_json TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    html BLOB,
+    generation_status TEXT NOT NULL DEFAULT 'pending' CHECK (generation_status IN ('pending', 'ready', 'unavailable')),
+    generation_attempts INTEGER NOT NULL DEFAULT 0,
+    generation_next_attempt INTEGER NOT NULL,
+    generation_lease_token TEXT,
+    generation_lease_until INTEGER,
+    generation_error TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE (escrow_id, archive_timestamp)
+);
+CREATE INDEX IF NOT EXISTS idx_transcript_generation_due ON transcript_delivery_archives
+    (generation_status, generation_next_attempt, generation_lease_until);
+
+CREATE TABLE IF NOT EXISTS transcript_delivery_recipients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    archive_id INTEGER NOT NULL REFERENCES transcript_delivery_archives(id) ON DELETE CASCADE,
+    recipient_id TEXT NOT NULL,
+    summary_delivered INTEGER NOT NULL DEFAULT 0 CHECK (summary_delivered IN (0, 1)),
+    html_delivered INTEGER NOT NULL DEFAULT 0 CHECK (html_delivered IN (0, 1)),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'exhausted')),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt INTEGER NOT NULL,
+    lease_token TEXT,
+    lease_until INTEGER,
+    last_error TEXT,
+    last_message_id TEXT,
+    updated_at INTEGER NOT NULL,
+    UNIQUE (archive_id, recipient_id)
+);
+CREATE INDEX IF NOT EXISTS idx_transcript_recipient_due ON transcript_delivery_recipients
+    (status, next_attempt, lease_until);

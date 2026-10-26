@@ -2,6 +2,9 @@ process.env.DATABASE_PATH = ':memory:';
 const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
+const fs = require('node:fs');
+const path = require('node:path');
+const Database = require('better-sqlite3');
 const { AttachmentBuilder, Client, ChannelType, Message, Collection } = require('discord.js');
 const discordTranscripts = require('discord-html-transcripts');
 const { db } = require('../src/database/init');
@@ -11,6 +14,7 @@ const closures = require('../src/database/transcriptRepository');
 const { closeDealThread } = require('../src/utils/threadClosure');
 const { buildTranscriptSummary, transcriptFilename, TRANSCRIPT_COLOR } = require('../src/utils/transcriptPresentation');
 const { createTranscriptService, TRANSCRIPT_LIMIT } = require('../src/services/transcripts');
+const { createTranscriptDeliveryRepository } = require('../src/database/transcriptDeliveryRepository');
 
 const buyerId = '100000000000000001';
 const sellerId = '100000000000000002';
@@ -21,6 +25,25 @@ const icon = 'https://cdn.discordapp.com/icons/200000000000000001/example.png';
 const botAvatar = 'https://cdn.discordapp.com/avatars/100000000000000003/example.png';
 const closerAvatar = 'https://cdn.discordapp.com/avatars/100000000000000001/example.png';
 const silentLogger = { error() {}, warn() {} };
+const isolatedDatabases = new Set();
+const jsonEmbed = embed => typeof embed.toJSON === 'function' ? embed.toJSON() : embed;
+
+function isolatedRepository() {
+    const database = new Database(':memory:');
+    database.pragma('foreign_keys = ON');
+    database.exec(fs.readFileSync(path.join(__dirname, '../src/database/schema.sql'), 'utf8'));
+    database.prepare('INSERT INTO users (id, discord_id, username, account_created_at) VALUES (1, ?, ?, ?), (2, ?, ?, ?)')
+        .run(buyerId, 'Buyer', '2020-01-01', sellerId, 'Seller', '2020-01-01');
+    database.prepare(`INSERT INTO escrow_transactions
+        (id, transaction_uuid, guild_id, channel_id, buyer_id, seller_id, item_description, amount, currency, payment_unit, status)
+        VALUES (7, 'ESC-TEST-REFERENCE', ?, ?, 1, 2, 'Menace Cape', 20, 'Redblocks', 'stacks', 'completed')`)
+        .run(guildId, channelId);
+    database.prepare(`INSERT INTO escrow_thread_closures
+        (id, escrow_id, actor_discord_id, actor_name, kind, status, archive_timestamp)
+        VALUES (1, 7, ?, 'Buyer', 'participant', 'archived', ?)`).run(buyerId, timestamp);
+    isolatedDatabases.add(database);
+    return { database, repository: createTranscriptDeliveryRepository({ database }) };
+}
 function escrow(overrides = {}) {
     return {
         id: 7, transaction_uuid: 'ESC-TEST-REFERENCE', guild_id: guildId, channel_id: channelId,
@@ -41,6 +64,7 @@ function summary(overrides = {}) {
 }
 const field = (embed, name) => embed.fields.find(entry => entry.name === name)?.value;
 function serviceFixture(overrides = {}) {
+    const { database, repository } = isolatedRepository();
     const stored = escrow();
     const sent = new Map([[buyerId, []], [sellerId, []]]);
     const calls = { generated: [], recorded: [], errors: [], warnings: [] };
@@ -57,18 +81,23 @@ function serviceFixture(overrides = {}) {
         guild: { name: 'Market', iconURL: () => icon }, client,
     };
     const service = createTranscriptService({
+        repository,
         createTranscript: async (channel, options) => { calls.generated.push({ channel, options }); return attachment; },
         findEscrow: () => stored,
         recordArchive: (id, archiveTimestamp) => {
             calls.recorded.push({ id, archiveTimestamp });
-            return closure({ archive_timestamp: archiveTimestamp });
+            database.prepare(`INSERT OR IGNORE INTO escrow_thread_closures
+                (escrow_id, actor_discord_id, actor_name, kind, status, archive_timestamp)
+                VALUES (?, ?, 'Buyer', 'participant', 'archived', ?)`).run(id, buyerId, archiveTimestamp);
+            const row = database.prepare('SELECT * FROM escrow_thread_closures WHERE escrow_id = ? AND archive_timestamp = ?').get(id, archiveTimestamp);
+            return closure({ ...row });
         },
         logger: {
             error: (...args) => calls.errors.push(args), warn: (...args) => calls.warnings.push(args),
         },
         ...overrides,
     });
-    return { stored, sent, calls, attachment, thread, service };
+    return { stored, sent, calls, attachment, thread, service, database, repository };
 }
 
 test('transcript summary renders the purple card with exact close identity/time and payment details', () => {
@@ -153,8 +182,8 @@ test('transcript service sends the styled summary and the same HTML attachment t
     assert.match(options.filename, /^transcript-menace-cape-7\.html$/);
     for (const userId of [buyerId, sellerId]) {
         const [payload] = fixture.sent.get(userId);
-        assert.equal(payload.files[0], fixture.attachment);
-        assert.equal(payload.embeds[0].toJSON().color, TRANSCRIPT_COLOR);
+        assert.deepEqual(payload.files[0].attachment, fixture.attachment.attachment);
+        assert.equal(jsonEmbed(payload.embeds[0]).color, TRANSCRIPT_COLOR);
         assert.deepEqual(payload.allowedMentions, { parse: [] });
     }
 });
@@ -180,7 +209,7 @@ test('HTML generation failure still delivers an honest summary without a fabrica
     for (const userId of [buyerId, sellerId]) {
         const [payload] = fixture.sent.get(userId);
         assert.deepEqual(payload.files, []);
-        assert.match(field(payload.embeds[0].toJSON(), 'Transcript'), /could not be generated/);
+        assert.match(field(jsonEmbed(payload.embeds[0]), 'Transcript'), /could not be generated/);
     }
     assert.equal(fixture.calls.errors.length, 1);
 });
@@ -199,7 +228,8 @@ test('concurrent REST and Gateway archive observations deliver once, while a lat
     assert.equal(generations, 1);
     assert.equal(fixture.sent.get(buyerId).length, 1);
     assert.deepEqual(await fixture.service.deliver(fixture.thread, timestamp), { skipped: true });
-    await fixture.service.deliver(fixture.thread, timestamp + 60000);
+    fixture.thread.archiveTimestamp = timestamp + 60000;
+    await fixture.service.deliver(fixture.thread, fixture.thread.archiveTimestamp);
     assert.equal(generations, 2);
     assert.equal(fixture.sent.get(buyerId).length, 2);
     assert.equal(fixture.sent.get(sellerId).length, 2);
@@ -273,8 +303,14 @@ test('real createTranscript and the service produce an HTML attachment from fetc
     channel.messages.fetch = async () => { fetches++; return new Collection([[message.id, message]]); };
     channel.archived = true;
     channel.archiveTimestamp = timestamp;
+    client.channels.fetch = async (id, options) => {
+        assert.equal(id, channelId);
+        assert.deepEqual(options, { force: true });
+        return channel;
+    };
     client.users.fetch = async userId => ({ send: async payload => deliveries.get(userId).push(payload) });
     const service = createTranscriptService({
+        repository: isolatedRepository().repository,
         createTranscript: discordTranscripts.createTranscript,
         findEscrow: () => escrow(), recordArchive: () => closure(), logger: silentLogger,
     });
@@ -333,8 +369,11 @@ test('a real persisted close request survives the API/Gateway race and produces 
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM escrow_thread_closures WHERE escrow_id = ?').get(stored.id).n, 1);
     for (const userId of [buyerId, sellerId]) {
         assert.equal(deliveries.get(userId).length, 1);
-        assert.match(field(deliveries.get(userId)[0].embeds[0].toJSON(), 'Closed By'), new RegExp(buyerId));
+        assert.match(field(jsonEmbed(deliveries.get(userId)[0].embeds[0]), 'Closed By'), new RegExp(buyerId));
     }
 });
 
-after(() => db.close());
+after(() => {
+    for (const database of isolatedDatabases) if (database.open) database.close();
+    db.close();
+});

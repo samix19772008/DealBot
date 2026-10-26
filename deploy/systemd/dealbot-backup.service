@@ -1,0 +1,33 @@
+[Unit]
+Description=Create a verified local SQLite backup for DealBot
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=dealbot
+Group=dealbot
+WorkingDirectory=/opt/dealbot
+Environment=NODE_ENV=production
+Environment=DATABASE_PATH=/var/lib/dealbot/escrow.sqlite
+StateDirectory=dealbot
+StateDirectoryMode=0700
+UMask=0077
+ExecStart=/usr/bin/node /opt/dealbot/scripts/backup-database.js
+TimeoutStartSec=10min
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/dealbot

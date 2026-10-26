@@ -11,7 +11,11 @@ DealBot's current niche is a Discord gaming marketplace: one agreed payment, a p
 - A setup diagnostic, auditable flag corrections, private offer defaults, and verified SQLite backups.
 - Optional global command registration for installations in multiple servers. This was validated with simulated REST calls; no live global registration was performed during development.
 
-## First pilot
+## Private acceptance first
+
+Complete [the private acceptance run](PRIVATE_ACCEPTANCE.md) in a nonpublic test server before announcing the bot. The owner, buyer, seller, and staff can exercise the real application without exposing an unfinished rollout to a community. Offline tests, container checks, and source publication do not complete the Discord checks in that run.
+
+## After private acceptance
 
 Start with three gaming-market communities whose moderators can actively participate, for roughly one month. Help each administrator run `/setup`, verify a representative deal and dispute in their own server, and explain that payment checks remain the participants' responsibility.
 
@@ -26,7 +30,7 @@ The stats command cannot yet prove trader retention or measure time-to-resolutio
 3. Publish an actual support contact and decide data-retention and correction procedures. Private threads, moderation decisions, and DM transcripts are sensitive records. Source publication alone does not provide a support operation or a privacy policy.
 4. Complete Discord's applicable app-verification and privileged-intent requirements as installations grow. The app currently requests Server Members and Message Content for its existing workflow; current requirements must be checked in the Developer Portal.
 5. Load-test the expected workload and review thread limits, rate limits, storage growth, and the single SQLite database. These development tests do not establish multi-host scalability or shard readiness.
-6. Add durable transcript retries or a recovery export flow if reliable delivery is promised. Current DM transcript dispatch is best effort: closed DMs are logged, in-flight duplicate dispatch is suppressed, and an unavailable HTML file is reported honestly. Offline events and delivery outcomes are not reconciled through a durable queue yet.
+6. Verify the durable transcript queue and private recovery flow on the installed bot. New archive observations save work and individual outcomes in SQLite; failed deliveries resume with bounded backoff, and `/transcript` can retrieve a captured file. Gateway events missed while the bot was offline are not discovered by scanning all historical threads. Reopened/deleted sources may prevent capture; closed DMs and ambiguous send acknowledgements still limit delivery guarantees. Monitor exhausted retries and storage growth, and choose retention for private HTML artifacts.
 
 The accurate product description is **deal coordination and dispute records for Discord communities**. DealBot does not hold, transfer, verify, insure, or refund funds. Financial custody would require a separate payment integration and operational design, not a label change.
 

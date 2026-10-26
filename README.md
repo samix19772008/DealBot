@@ -18,6 +18,8 @@ Startup automatically adds missing settings, rank-role, close-approval, payment-
 
 **Version 1.5 reads decorated, multi-product market posts.** Keep sales descriptions, Markdown, custom emojis, and mentions; clear product headings and prices become separate selectable products or packs. Sellers can use **Apps → Preview Listing** on their own posts to privately review detection. Refresh commands after upgrading. Existing 1.4 single-product snapshots and saved deal terms remain compatible; the separate `/deal` command remains available for negotiated offers. See [supported examples and limits](docs/LISTING_FORMAT.md).
 
+**Version 1.6 adds durable transcript delivery and deployment tools.** New archive observations save capture work and independent recipient progress in SQLite. Restarts resume pending work, and `/transcript` offers a private download of a saved HTML file when DMs are closed. Refresh commands after updating. [Operations](docs/OPERATIONS.md) includes Docker Compose and systemd alternatives, verified automatic backups, health checks, and a [private acceptance run](docs/PRIVATE_ACCEPTANCE.md) before any public announcement.
+
 ## Version 1.3 reputation migration
 
 Reputation, scam flags, and staff rank changes now belong to the server where the decisions and deals occur. The profile shows **earned points** separately from an optional **staff rank override**. Overrides never create earned points; `/set-rank rank:Earned` restores the earned rank. `/review-flag` clears only the reviewed server's active flag, requires a recorded reason, and retains flag-decision history.
@@ -40,6 +42,9 @@ Copy `.env.example` to `.env` and fill in:
 | `CLIENT_ID` | Application ID; needed to register commands |
 | `GUILD_ID` | Your server ID; needed to register commands |
 | `DATABASE_PATH` | Optional SQLite path; defaults to `data/escrow.sqlite` |
+| `BACKUP_INTERVAL_HOURS` | `0` disables automatic backups; `1`–`168` takes a verified startup snapshot and schedules that many hours between snapshots. Deployment examples use `24` |
+| `BACKUP_DIRECTORY` | Optional local backup destination; defaults to the database folder's `backups/` |
+| `HEALTH_STATUS_PATH` | Optional heartbeat file; defaults to `health.json` beside the database |
 
 In the Discord Developer Portal, enable **Server Members Intent** and **Message Content Intent**. Message Content is required for full conversation transcripts and reading the source message for a context-menu deal. Add the bot to the server using the `bot` and `applications.commands` scopes.
 
@@ -68,6 +73,7 @@ As a server administrator, run `/set-hub-channel` and `/set-mod-role`. Optionall
 | `/listing-format` | Privately explain supported post styles, examples, and an optional simple template |
 | `/deals status page` | Privately list your active or all deals in the current server |
 | `/deal-status reference` | Privately inspect a reference or numeric deal ID and recent activity |
+| `/transcript reference` | Participants or local staff: privately download the latest saved archive file independently of DM delivery |
 | `/profile user` | Show earned points, staff rank overrides, local flags, and deal history in this server |
 | `/help` | Explain the workflow and available commands |
 | `/ping` | Check the bot's response latency |
@@ -134,9 +140,11 @@ After a deal conversation is archived, both participants receive a purple summar
 
 The closer is recorded before an archive request and confirmed using Discord's archive timestamp. Participant approval and moderator closure retain their actual actor. Archives made outside DealBot's close controls are labeled **Automatic archive or a Discord-side action**, since the bot cannot identify that actor from a thread update alone. Failed attempts and reopened threads do not inherit the wrong closer. REST and Gateway observations of the same archive share a delivery operation, including SDK cache races.
 
-The preview is illustrative; Discord controls the theme and attachment preview. If transcript generation fails, the summary still arrives with an explicit unavailable-file message. Closed DMs are logged independently so one recipient does not prevent the other from receiving their record.
+The preview is illustrative; Discord controls the theme and attachment preview. New archives atomically queue capture work with their closure record. Captured HTML and summaries are saved in SQLite before sending. Each participant has independent delivery progress: only pending outcomes are retried after a restart. Upgrades do not scan and resend every historical closure. No saved HTML is invented for older archives.
 
-Transcripts include up to the latest 10,000 messages. Attachments remain links and depend on Discord availability. Delivery requires the participant to accept the bot's DMs; a failed DM is logged and is not retried automatically. An auto-archive does not complete or cancel an active deal; `/deals` still shows its recorded state. Reopen the thread before using its controls.
+Transient capture failures are retried up to 5 times. An honest summary can be sent first; if capture later succeeds, the HTML file follows separately. DM failures are retried up to 12 times with increasing delays from one minute to a maximum of 24 hours between attempts. A participant can also use `/transcript reference:ESC-…` in the same server for an ephemeral download of a saved artifact; only participants and authorized local staff can retrieve it. Downloads do not falsely mark a DM as delivered. Stable Discord nonces reduce duplicate sends, but a crash after Discord accepted a message and before its acknowledgement was recorded can still produce a duplicate.
+
+Exports include up to the latest 10,000 messages and must fit the 8 MiB artifact limit. Attachments remain links and depend on Discord availability. Capture retries verify that the source is still the same archived conversation before and after generation. A deleted or reopened source cannot be re-exported as an older archive; an already saved HTML artifact can still be delivered or downloaded. An auto-archive does not complete or cancel an active deal. The database now contains private HTML artifacts as well as deal records; backups include them. No automatic artifact deletion or retention policy is enabled. Monitor storage and choose a retention policy before public use.
 
 ## Multiple servers and operations
 
@@ -157,11 +165,15 @@ For a consistent SQLite snapshot, including committed WAL data:
 npm run db:backup
 # Or choose a new output file without overwriting an existing backup:
 npm run db:backup -- --output /path/to/new-backup.sqlite
+# Rehearse restoration and current migrations on a private disposable copy:
+npm run db:verify-backup -- /path/to/new-backup.sqlite
 ```
 
 This uses SQLite's online backup API, opens the source read-only without running migrations, verifies integrity and foreign keys, and publishes a private standalone file. The default destination is a unique file in the database folder's `backups/` directory. It does not copy `.env`, upload backups, or schedule retention. To restore, stop the bot, preserve the current database and its sidecars, and point `DATABASE_PATH` at a verified backup before starting again. Keep recovery copies away from the host; a backup on the same disk alone is not disaster recovery.
 
-See [the launch plan](docs/LAUNCH_PLAN.md) for the proposed small-community pilot, measurable adoption questions, and remaining hosting, support, privacy, and scale work. Global registration does not demonstrate global readiness.
+For a persistent deployment, choose one method in [Operations](docs/OPERATIONS.md). Set `BACKUP_INTERVAL_HOURS=24` for the built-in startup/daily backup worker, or use the optional systemd backup timer with the built-in worker disabled. Local snapshots are not an off-host backup; configure your own protected external copies. `npm run health` reports a fresh local heartbeat, a live recorded process, and last-reported Discord readiness, plus aggregate transcript queue counts. Review nonzero `failedRecipients` and `unavailableArchives`; a healthy process does not mean every delivery succeeded. The command does not send a Discord test message or prove every command works. Shutdown stops new work, drains active handlers and workers, then closes SQLite. A stuck shutdown uses a bounded supervised exit instead of closing SQLite beneath active work.
+
+Complete [private acceptance](docs/PRIVATE_ACCEPTANCE.md) before announcing the bot. See [the launch plan](docs/LAUNCH_PLAN.md) for later adoption questions and remaining hosting, support, privacy, and scale decisions. Global registration does not demonstrate global readiness.
 
 ## Development and checks
 

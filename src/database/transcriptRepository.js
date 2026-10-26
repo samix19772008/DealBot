@@ -74,12 +74,16 @@ const recordArchive = db.transaction((escrowId, timestamp) => {
         // archival after the thread is reopened.
         db.prepare("UPDATE escrow_thread_closures SET status = 'failed' WHERE escrow_id = ? AND status = 'pending'")
             .run(escrow.id);
-        return findById.get(pending.id);
+        const closure = findById.get(pending.id);
+        if (escrow.channel_id) require('./transcriptDeliveryRepository').createTranscriptDeliveryRepository().enqueue({ escrow, closure });
+        return closure;
     }
     const id = db.prepare(`INSERT INTO escrow_thread_closures
         (escrow_id, kind, status, archive_timestamp) VALUES (?, 'untracked', 'archived', ?)`)
         .run(escrow.id, timestamp).lastInsertRowid;
-    return findById.get(id);
+    const closure = findById.get(id);
+    if (escrow.channel_id) require('./transcriptDeliveryRepository').createTranscriptDeliveryRepository().enqueue({ escrow, closure });
+    return closure;
 });
 
 /** Reopening proves that an unfinished earlier close must not identify a later archive. */

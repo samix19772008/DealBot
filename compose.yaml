@@ -1,0 +1,42 @@
+name: dealbot
+
+services:
+  bot:
+    build: .
+    image: dealbot:local
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 45s
+    user: "1000:1000"
+    env_file:
+      - ${DEALBOT_ENV_FILE:-.env}
+    environment:
+      NODE_ENV: production
+      DATABASE_PATH: /app/data/escrow.sqlite
+      HEALTH_STATUS_PATH: /tmp/dealbot-health.json
+      BACKUP_INTERVAL_HOURS: "24"
+    volumes:
+      - dealbot-data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "node", "scripts/healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  dealbot-data:
