@@ -1,8 +1,9 @@
-const { ContextMenuCommandBuilder, ApplicationCommandType, StringSelectMenuBuilder, ActionRowBuilder } = require('discord.js');
-const { formatPayment } = require('../../utils/payments');
-const { parseListing, listingFingerprint, LISTING_FORMAT_HELP } = require('../../utils/listings');
+const { ContextMenuCommandBuilder, ApplicationCommandType } = require('discord.js');
+const { parseCatalog } = require('../../utils/catalog');
+const { listingFingerprint } = require('../../utils/listings');
 const { createListingRequest } = require('../../database/listingRepository');
-const { getAccessibleSourceMessage } = require('../../interactions/selects/paymentMethod');
+const { getAccessibleSourceMessage } = require('../../utils/sourceMessage');
+const { createCatalogResponse, createPaymentResponse } = require('../../utils/catalogPresentation');
 
 module.exports = {
     data: new ContextMenuCommandBuilder()
@@ -28,13 +29,18 @@ module.exports = {
         await interaction.deferReply({ ephemeral: true });
         const source = await getAccessibleSourceMessage(interaction, targetMessage.channelId, targetMessage.id);
         if (source.error) return interaction.editReply({ content: source.error, allowedMentions: { parse: [] } });
-        let listing;
-        try { listing = parseListing(source.message.content); }
-        catch {
+        let catalog;
+        try { catalog = parseCatalog(source.message.content); }
+        catch (error) {
             return interaction.editReply({
-                content: `This post does not have clear, supported listing prices. Ask the seller to use this format before requesting a deal.\n\n${LISTING_FORMAT_HELP}`,
+                content: `The products and prices in this post could not be identified safely. ${error.message || 'Ask the seller to clarify the product names and prices.'}`.slice(0, 1900),
+                components: [],
                 allowedMentions: { parse: [] },
             });
+        }
+        if (!catalog.products.some(product => product.stock !== 0)) {
+            return interaction.editReply({ content: 'The products in this post are advertised as sold out. Ask the seller to update their stock before requesting a deal.',
+                components: [], allowedMentions: { parse: [] } });
         }
         const session = createListingRequest({
             guildId: interaction.guildId,
@@ -42,24 +48,12 @@ module.exports = {
             messageId: source.message.id,
             buyerDiscordId: interaction.user.id,
             sellerDiscordId: source.message.author.id,
-            listing,
+            catalog,
+            sourceContent: source.message.content,
             sourceFingerprint: listingFingerprint(source.message),
         });
-        const menu = new StringSelectMenuBuilder()
-            .setCustomId(`deal_payment_method_v2_${session.token}`)
-            .setPlaceholder('Choose the payment method')
-            .setMinValues(1)
-            .setMaxValues(1)
-            .addOptions(listing.options.map(method => ({
-                label: method.label,
-                value: method.key,
-                description: `${formatPayment(method)} per product`.slice(0, 100),
-            })));
-
-        await interaction.editReply({
-            content: 'Choose a payment method offered in this post. Enter the product quantity next; the total is calculated from the seller\'s fixed price. This request expires in 15 minutes.',
-            components: [new ActionRowBuilder().addComponents(menu)],
-            allowedMentions: { parse: [] },
-        });
+        return interaction.editReply(catalog.products.length === 1
+            ? createPaymentResponse(session, catalog.products[0].id)
+            : createCatalogResponse(session));
     },
 };

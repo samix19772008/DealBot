@@ -382,13 +382,13 @@ test('a successfully submitted request cannot be replayed through either its mod
     assert.match(responseContent(f.calls), /already been submitted.*\/deals/);
 });
 
-test('unclear, image-only, and embed-only prices receive format guidance without creating a picker', async () => {
+test('unclear, image-only, and embed-only prices receive a clear explanation without guessed offers', async () => {
     for (const content of ['', 'Menace Cape for 33 Golds', 'Item: Cape\nGolds: 33\nGolds: 44']) {
         const f = fixture(content);
         f.targetMessage.embeds = [{ title: 'Cape', description: 'Golds: 33' }];
         await contextCommand.execute(f.interaction());
-        assert.match(responseContent(f.calls), /listing-format/);
-        assert.equal(f.calls.edit.at(-1).components, undefined);
+        assert.match(responseContent(f.calls), /could not be identified safely/);
+        assert.equal(f.calls.edit.at(-1).components?.length || 0, 0);
         assertNoDeal(f);
     }
     assert.equal(db.prepare('SELECT COUNT(*) AS count FROM listing_request_sessions').get().count, 0);

@@ -1,17 +1,21 @@
 const { sendDealOffer } = require('../../utils/dealOffer');
 const { getListingQuote } = require('../../database/listingRepository');
-const { parseListing, listingFingerprint } = require('../../utils/listings');
-const { getAccessibleSourceMessage } = require('../selects/paymentMethod');
+const { listingFingerprint } = require('../../utils/listings');
+const { getAccessibleSourceMessage } = require('../../utils/sourceMessage');
 const { deny } = require('../helpers');
 
 module.exports = {
     id: 'deal_offer_modal_',
     async execute(interaction) {
-        const match = interaction.customId.match(/^deal_offer_modal_v2_([a-f0-9]{32})_([a-z0-9]+)$/);
+        const legacy = interaction.customId.match(/^deal_offer_modal_v2_([a-f0-9]{32})_([a-z0-9]+)$/);
+        const current = interaction.customId.match(/^deal_offer_modal_v3_([a-f0-9]{32})_(p\d{1,3})_([a-z0-9]+)$/);
+        const match = current || legacy;
         if (!interaction.guildId || !match) {
             return deny(interaction, 'This deal form has expired. Reopen Request a Deal on the source message and choose a payment method.');
         }
-        const [, token, methodKey] = match;
+        const token = match[1];
+        const productId = current?.[2];
+        const methodKey = current ? current[3] : legacy[2];
         let quote;
         try {
             const quantity = interaction.fields.getTextInputValue('quantity');
@@ -19,6 +23,7 @@ module.exports = {
             quote = getListingQuote(token, {
                 guildId: interaction.guildId,
                 buyerDiscordId: interaction.user.id,
+                productId,
                 methodKey,
                 quantity: Number(quantity),
             });
@@ -31,10 +36,8 @@ module.exports = {
         const source = await getAccessibleSourceMessage(interaction, session.channel_id, session.message_id);
         if (source.error) return interaction.editReply({ content: source.error, allowedMentions: { parse: [] } });
         const targetMessage = source.message;
-        let unchanged = targetMessage.author.id === session.seller_discord_id &&
+        const unchanged = targetMessage.author.id === session.seller_discord_id &&
             listingFingerprint(targetMessage) === session.source_fingerprint;
-        try { unchanged = unchanged && JSON.stringify(parseListing(targetMessage.content)) === JSON.stringify(session.listing); }
-        catch { unchanged = false; }
         if (!unchanged) {
             return interaction.editReply({
                 content: 'The source post changed after this request was opened. Reopen Request a Deal to review the current prices.',
@@ -43,7 +46,7 @@ module.exports = {
         }
         await sendDealOffer({
             interaction, sellerDiscordUser: targetMessage.author, itemDescription, ...payment,
-            listingRequest: { token, methodKey, quantity: payment.quantity },
+            listingRequest: { token, productId, methodKey, quantity: payment.quantity },
         });
     },
 };

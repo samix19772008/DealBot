@@ -157,6 +157,7 @@ CREATE TABLE IF NOT EXISTS listing_request_sessions (
     seller_discord_id TEXT NOT NULL,
     listing_json TEXT NOT NULL,
     source_fingerprint TEXT NOT NULL,
+    source_content TEXT,
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL,
     consumed_escrow_id INTEGER UNIQUE REFERENCES escrow_transactions(id),
@@ -182,5 +183,10 @@ CREATE TABLE IF NOT EXISTS escrow_listing_terms (
     currency TEXT NOT NULL,
     listing_json TEXT NOT NULL,
     source_fingerprint TEXT NOT NULL,
+    source_content TEXT,
+    product_key TEXT,
+    bundle_quantity INTEGER NOT NULL DEFAULT 1,
+    bundle_unit TEXT,
+    advertised_stock INTEGER,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

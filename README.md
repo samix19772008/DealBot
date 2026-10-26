@@ -16,7 +16,7 @@ Startup automatically adds missing settings, rank-role, close-approval, payment-
 
 **Version 1.2 changes the `/deal` options. Run `npm run commands:deploy` after updating**, so Discord replaces the old free-text `price` field with the new payment choices.
 
-**Version 1.4 adds fixed prices for market-post requests.** Ask sellers to follow [the listing format](docs/LISTING_FORMAT.md), and refresh commands to add `/listing-format`. Buyers choose only a listed payment method and a product quantity; DealBot calculates the total. Old payment-entry menus must be reopened. Existing deals retain their agreed terms, and the separate `/deal` command remains available for negotiated offers.
+**Version 1.5 reads decorated, multi-product market posts.** Keep sales descriptions, Markdown, custom emojis, and mentions; clear product headings and prices become separate selectable products or packs. Sellers can use **Apps → Preview Listing** on their own posts to privately review detection. Refresh commands after upgrading. Existing 1.4 single-product snapshots and saved deal terms remain compatible; the separate `/deal` command remains available for negotiated offers. See [supported examples and limits](docs/LISTING_FORMAT.md).
 
 ## Version 1.3 reputation migration
 
@@ -63,8 +63,9 @@ As a server administrator, run `/set-hub-channel` and `/set-mod-role`. Optionall
 | Command | Use |
 | --- | --- |
 | `/deal seller item payment amount unit` | Send a negotiated offer with a manually entered total payment |
-| Message → Apps → Request a Deal | Choose only a method in the formatted listing, then a product quantity; the total is calculated |
-| `/listing-format` | Privately show sellers a copyable fixed-price post template and examples |
+| Message → Apps → Request a Deal | Choose a detected product or pack, its offered payment method, and quantity; the total is calculated |
+| Message → Apps → Preview Listing | Author only: privately review detected products, prices, pack sizes, and advertised stock |
+| `/listing-format` | Privately explain supported post styles, examples, and an optional simple template |
 | `/deals status page` | Privately list your active or all deals in the current server |
 | `/deal-status reference` | Privately inspect a reference or numeric deal ID and recent activity |
 | `/profile user` | Show earned points, staff rank overrides, local flags, and deal history in this server |
@@ -83,21 +84,19 @@ Commands and deal listings are server-only. A deal's private status is visible t
 
 ## Buying from a market post
 
-Sellers can run `/listing-format` to get this copyable template:
+Sellers can keep marketing descriptions, headings, bold text, custom emojis, Discord mentions, and several products in one post. DealBot recognizes clear text price relationships such as a product heading followed by `Money: 22$`, or a pack offer such as `9 Books = 5 Sky1 Notchs`. It associates prices and advertised stock with their product section, rather than sharing them across the whole post.
 
-```text
-Item: Menace Cape
-Money: $2.00
-Golds: 33
-Redblocks: 20 stacks
-Sky 1 Notchs: 20
-```
+The buyer right-clicks the seller's message and chooses **Apps → Request a Deal**. For several offers, the buyer selects a **product or pack first**, then one of that offer's payment methods and a quantity from **1 to 999**. The buyer cannot replace a price or choose a method offered only for another product. Buying two packs of `9 Books = 5 Sky1 Notchs` means 18 books for 10 Sky 1 Notchs; it does not apply the smaller pack's price.
 
-Each price buys **one product**. Delete the lines for payment methods the seller does not accept. For example, a post containing only `Item: Menace Cape` and `Golds: 33` allows only Golds. These are alternative prices, not currency exchange rates. Sellers should put one product in each message, use the field labels shown, and leave other prose out of the listing text. Images may accompany the text, but image-only and embed-only prices are not read. The whole listing may optionally be placed inside a code block. See [the full format and examples](docs/LISTING_FORMAT.md).
+Each advertised payment method is a separate alternative, not an exchange rate. Money uses USD with at most two decimal places. A stack contains 64 game items. **In post prices, `5.32 Stack` means 5 stacks and 32 items = 352; `1.20 Stack` means 84.** The digits after the dot are a leftover item count from 0 to 63, so `.2` means 2 items and `.20` means 20. Whole stack counts retain their explicit units.
 
-The buyer right-clicks the seller's message and chooses **Apps → Request a Deal**. The private menu shows only its listed methods and their per-product prices. The next form asks for a whole product quantity from **1 to 999**. The buyer cannot edit the price or payment unit: 33 Golds × 2 products is 66 Golds; $2.00 × 2 is $4.00; 20 stacks × 2 is 40 stacks. Totals must still fit the payment limits below. Money uses US dollars with at most two decimal places; game payments use whole items or whole stacks of 64.
+Sellers should use **Apps → Preview Listing** on their own post to privately inspect the detected offers, prices, pack sizes, stock, and warnings before accepting requests. This read-only preview has pages of five products; buyer menus also paginate when necessary. `/listing-format` contains examples and a simple optional template, and [the listing guide](docs/LISTING_FORMAT.md) explains supported styles. The old `Item:` template remains supported; it is not required for a decorated post.
 
-Selections belong to the buyer and server, survive a bot restart, and expire after 15 minutes. Source-message access and private-thread membership are checked again when the form is submitted. Editing or deleting the source message requires the buyer to reopen the request. Invalid or ambiguous listing text is rejected with format guidance instead of a guessed price. Once the deal request is created, its product quantity, unit price, total, and source reference are preserved; later listing edits do not rewrite that request. This does not reserve stock or verify inventory.
+Text detection runs locally without an external AI service or API key. It recognizes supported structures, not every possible sentence. Unclear or contradictory prices are omitted with warnings, or the request is rejected if no clear offers remain. Prices must be in message text: image-only prices and embed-only prices are not read. The parser accepts up to 100 detected products and 10,000 text characters. Product names are bounded to 200 characters. Review the original post and detected terms; parsing is not a price guarantee.
+
+`Stock: 0` makes an offer unavailable. Positive stock is advertised information only: the bot does not reserve or decrement inventory, infer stock units, or guarantee fulfillment. A quantity within the allowed range does not prove availability. Request totals must also fit the payment limits below.
+
+Selections belong to the buyer and server, survive a bot restart, and expire after 15 minutes. Source access and private-thread membership are checked again before creation. Editing or deleting the source requires reopening a request. Once a request is created, its selected product, pack size, quantity, unit price, total, advertised stock, and source reference are saved; later edits do not rewrite those terms. New market requests also retain the original post text locally in SQLite so descriptions and enchantment details can be traced after an edit. Earlier records without a saved source body remain unchanged.
 
 ### Negotiated offers with /deal
 

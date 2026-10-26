@@ -30,6 +30,16 @@ function initDatabase() {
                 buyer_close_approved: 'BOOLEAN NOT NULL DEFAULT 0',
                 seller_close_approved: 'BOOLEAN NOT NULL DEFAULT 0',
             },
+            listing_request_sessions: {
+                source_content: 'TEXT',
+            },
+            escrow_listing_terms: {
+                source_content: 'TEXT',
+                product_key: 'TEXT',
+                bundle_quantity: 'INTEGER NOT NULL DEFAULT 1',
+                bundle_unit: 'TEXT',
+                advertised_stock: 'INTEGER',
+            },
         };
         for (const [table, columns] of Object.entries(additions)) {
             const present = new Set(db.pragma(`table_info(${table})`).map(column => column.name));

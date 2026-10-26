@@ -12,7 +12,7 @@ async function report(interaction, content) {
 }
 
 function getActionEscrowId(interaction, handler) {
-    if (['deal_offer_modal_', 'deal_payment_method_'].includes(handler.id)) return null;
+    if (['deal_offer_modal_', 'deal_payment_method_', 'deal_product_', 'listing_preview_'].includes(handler.id)) return null;
     const value = interaction.customId.slice(handler.id.length);
     const match = handler.id === 'scammer_pick_' ? value.match(/^(?:buyer|seller)_(\d+)$/) : value.match(/^(\d+)$/);
     return match?.[1] ?? false;

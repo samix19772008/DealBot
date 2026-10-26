@@ -40,6 +40,7 @@ async function sendDealOffer({ interaction, sellerDiscordUser, itemDescription, 
             listingQuote = getListingQuote(listingRequest.token, {
                 guildId: interaction.guildId, buyerDiscordId: interaction.user.id,
                 methodKey: listingRequest.methodKey, quantity: listingRequest.quantity,
+                productId: listingRequest.productId,
             });
             if (listingQuote.session.seller_discord_id !== sellerDiscordUser.id) {
                 return respond(interaction, { content: 'The listing seller has changed. Reopen Request a Deal on the source message.' });

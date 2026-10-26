@@ -1,7 +1,7 @@
 const { PermissionFlagsBits, ChannelType } = require('discord.js');
 
 /** Recheck access before reading a source through the bot's wider permissions. */
-async function getAccessibleSourceMessage(interaction, channelId, messageId) {
+async function getAccessibleSourceMessage(interaction, channelId, messageId, { allowOwn = false } = {}) {
     if (!interaction.guildId || !interaction.guild || !interaction.member) {
         return { error: 'Open a new deal request from a message inside your server.' };
     }
@@ -32,7 +32,7 @@ async function getAccessibleSourceMessage(interaction, channelId, messageId) {
         return { error: 'The source message could not be found. Open a new deal request.' };
     }
     if (message.author.bot) return { error: 'You cannot open a deal on a bot message.' };
-    if (message.author.id === interaction.user.id) return { error: 'You cannot open a deal with yourself.' };
+    if (!allowOwn && message.author.id === interaction.user.id) return { error: 'You cannot open a deal with yourself.' };
     return { message };
 }
 

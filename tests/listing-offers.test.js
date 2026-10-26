@@ -7,13 +7,14 @@ const { db } = require('../src/database/init');
 const { setHubChannel } = require('../src/database/guildSettingsRepository');
 const { createListingRequest, getEscrowListingTerms } = require('../src/database/listingRepository');
 const { parseListing, listingFingerprint } = require('../src/utils/listings');
+const { parseCatalog } = require('../src/utils/catalog');
 const { sendDealOffer, REQUIRED_HUB_PERMISSIONS } = require('../src/utils/dealOffer');
 
 let sequence = 0;
 const nextId = () => String(900000000000000000n + BigInt(++sequence));
 after(() => db.close());
 
-function fixture(content = 'Item: Menace Cape\nGolds: 33', methodKey = 'golds', quantity = 2) {
+function fixture(content = 'Item: Menace Cape\nGolds: 33', methodKey = 'golds', quantity = 2, { catalog, productId } = {}) {
     const guildId = nextId();
     const sent = { dm: [], replies: [] };
     const buyer = { id: nextId(), tag: 'Buyer', createdAt: new Date('2020-01-01'), bot: false };
@@ -37,9 +38,9 @@ function fixture(content = 'Item: Menace Cape\nGolds: 33', methodKey = 'golds', 
         editReply: async payload => { sent.replies.push(payload); } };
     const session = createListingRequest({ guildId, channelId: message.channelId, messageId: message.id,
         buyerDiscordId: buyer.id, sellerDiscordId: seller.id,
-        listing: parseListing(content), sourceFingerprint: listingFingerprint(message) });
+        ...(catalog ? { catalog } : { listing: parseListing(content) }), sourceFingerprint: listingFingerprint(message) });
     setHubChannel(guildId, hub.id);
-    return { interaction, sellerDiscordUser: seller, listingRequest: { token: session.token, methodKey, quantity },
+    return { interaction, sellerDiscordUser: seller, listingRequest: { token: session.token, productId, methodKey, quantity },
         // Injected caller values must never replace the stored seller terms.
         itemDescription: 'Forged item', amount: 1, currency: 'USD', paymentUnit: 'stacks',
         sent, message, source, session, hub };
@@ -118,4 +119,27 @@ test('expiry during Discord lookups is enforced by the final transaction without
         .get(f.session.token).consumed_escrow_id, null);
     assert.match(f.sent.replies.at(-1).content, /expired/);
     assert.deepEqual(db.pragma('foreign_key_check'), []);
+});
+
+test('the offer service derives prices from the selected catalog product rather than caller payment fields', async () => {
+    const content = require('./fixtures/market-posts.json').ranks;
+    const catalog = parseCatalog(content);
+    const product = catalog.products.find(candidate => /Emerald/i.test(candidate.item));
+    assert.ok(product);
+    const f = fixture(content, 'golds', 2, { catalog, productId: product.id });
+    // The shared fixture injects an unrelated item, amount1, USD and stack unit.
+    await sendDealOffer(f);
+    const [deal] = storedDeals(f);
+    assert.ok(deal, JSON.stringify(f.sent.replies));
+    assert.equal(deal.amount, 168);
+    assert.equal(deal.currency, 'Golds');
+    assert.equal(deal.payment_unit, 'each');
+    assert.match(deal.item_description, /Emerald/i);
+    assert.doesNotMatch(deal.item_description, /Special|Forged item/i);
+    const terms = getEscrowListingTerms(deal.id);
+    assert.equal(terms.product_key, product.id);
+    assert.equal(terms.unit_amount, 84);
+    assert.equal(terms.quantity, 2);
+    assert.equal(terms.total_amount, 168);
+    assert.equal(f.sent.dm.length, 1);
 });
