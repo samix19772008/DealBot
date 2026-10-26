@@ -12,13 +12,15 @@ DealBot records participant confirmations. It does **not** hold, transfer, verif
 4. Use Node.js 24 LTS, or Node.js 22.16 or newer. Run `npm ci` to install dependencies for your operating system. Do not reuse a copied `node_modules` folder.
 5. Enable the Discord intents below, run `npm run commands:deploy` to refresh the server commands, then `npm start`.
 
-Startup automatically adds missing settings, rank-role, close-approval, payment-unit, activity-log, closure-record, and listing-request tables/columns. Existing profiles, deals, and settings remain. Old deals keep their literal amounts and currencies: the upgrade never guesses whether an old number meant stacks. The old `add-*-columns.js` entry points still work, but manual migrations are unnecessary. New activity events are recorded from this version onward; old events are not reconstructed.
+Startup automatically adds missing settings, rank-role, close-approval, payment-unit, activity-log, closure-record, listing-request, and finished-thread cleanup tables/columns. Existing profiles, deals, and settings remain. Old deals keep their literal amounts and currencies: the upgrade never guesses whether an old number meant stacks. The old `add-*-columns.js` entry points still work, but manual migrations are unnecessary. New activity events are recorded from this version onward; old events are not reconstructed.
 
 **Version 1.2 changes the `/deal` options. Run `npm run commands:deploy` after updating**, so Discord replaces the old free-text `price` field with the new payment choices.
 
 **Version 1.5 reads decorated, multi-product market posts.** Keep sales descriptions, Markdown, custom emojis, and mentions; clear product headings and prices become separate selectable products or packs. Sellers can use **Apps → Preview Listing** on their own posts to privately review detection. Refresh commands after upgrading. Existing 1.4 single-product snapshots and saved deal terms remain compatible; the separate `/deal` command remains available for negotiated offers. See [supported examples and limits](docs/LISTING_FORMAT.md).
 
 **Version 1.6 adds durable transcript delivery and deployment tools.** New archive observations save capture work and independent recipient progress in SQLite. Restarts resume pending work, and `/transcript` offers a private download of a saved HTML file when DMs are closed. Refresh commands after updating. [Operations](docs/OPERATIONS.md) includes Docker Compose and systemd alternatives, verified automatic backups, health checks, and a [private acceptance run](docs/PRIVATE_ACCEPTANCE.md) before any public announcement.
+
+**Version 1.7 organizes multiple deals.** `/deals` is a private dashboard with filters, six deals per page, navigation, and individual deal details. New conversations have short names such as `deal-0042-menace-cape`. Finished conversations are locked and archived after 30 minutes without new messages by default; records and saved transcripts remain. Administrators can change or disable this policy with `/set-thread-policy`. Refresh commands after updating and complete the new organization checks in [private acceptance](docs/PRIVATE_ACCEPTANCE.md).
 
 ## Version 1.3 reputation migration
 
@@ -71,7 +73,7 @@ As a server administrator, run `/set-hub-channel` and `/set-mod-role`. Optionall
 | Message → Apps → Request a Deal | Choose a detected product or pack, its offered payment method, and quantity; the total is calculated |
 | Message → Apps → Preview Listing | Author only: privately review detected products, prices, pack sizes, and advertised stock |
 | `/listing-format` | Privately explain supported post styles, examples, and an optional simple template |
-| `/deals status page` | Privately list your active or all deals in the current server |
+| `/deals status page` | Open your private dashboard: active, needs your action, completed, or all deals; navigate and select details |
 | `/deal-status reference` | Privately inspect a reference or numeric deal ID and recent activity |
 | `/transcript reference` | Participants or local staff: privately download the latest saved archive file independently of DM delivery |
 | `/profile user` | Show earned points, staff rank overrides, local flags, and deal history in this server |
@@ -79,6 +81,7 @@ As a server administrator, run `/set-hub-channel` and `/set-mod-role`. Optionall
 | `/ping` | Check the bot's response latency |
 | `/set-hub-channel channel` | Administrator: choose and check the private-thread hub |
 | `/set-mod-role role` | Administrator: choose the dispute-resolution staff role |
+| `/set-thread-policy archive-after` | Administrator: archive finished conversations after 15, 30, 60, or 1,440 idle minutes, or turn cleanup off |
 | `/set-rank-role rank role` | Administrator: map a cosmetic trust rank to a Discord role |
 | `/set-rank user rank` | Administrator: set a local rank override or choose Earned to clear it |
 | `/setup` | Administrator: inspect required hub/staff permissions and optional role configuration |
@@ -86,7 +89,7 @@ As a server administrator, run `/set-hub-channel` and `/set-mod-role`. Optionall
 | `/review-flag user reason` | Administrator: clear a reviewed local scam flag while retaining its audit history |
 | `/set-language language` | Administrator: retained for compatibility; English is the only choice |
 
-Commands and deal listings are server-only. A deal's private status is visible to its participants and authorized staff in its own server.
+The 19 command definitions are server-only. A deal's private status is visible to its participants and authorized staff in its own server. The `/deals` dashboard shows only the requesting user's own deals in that server.
 
 ## Buying from a market post
 
@@ -126,11 +129,23 @@ Pick **one** option that the seller accepts. For `/deal`, **amount means the tot
 3. The buyer confirms payment was sent. The seller verifies receipt independently and confirms delivery. The buyer confirms receipt to complete the deal.
 4. Each completed deal counts once in this server's history. Each participant earns 5 local points only if this pair has not already earned points together in this server during the previous 24 hours. Repeat deals can still complete; their messages state that no new points were awarded. Any mapped cosmetic rank is synchronized when possible.
 5. Either participant can open a dispute with a reason. Payment/delivery/receipt confirmations pause while staff review it. Staff can complete the deal, cancel it, or flag a chosen participant as a scammer. Flagged users cannot start new deals.
-6. Both participants can approve closing an ended conversation; authorized staff can force-close an ended conversation. An HTML transcript is attempted by DM to each participant when the thread archives, including automatic archives.
+6. Both participants can approve closing an ended conversation; authorized staff can force-close it. The finished-thread policy also locks and archives idle ended conversations. An HTML transcript is attempted by DM to each participant when the thread archives, including automatic archives.
 
 **Recover missing buttons:** run `/deal-status` inside the deal's original private thread to restore the controls for its persisted state. This also works after a restart or failed Discord message. Pending requests can be inspected anywhere in the same server: the buyer can cancel, and the seller can accept or cancel. Repeated actions cannot award trust twice or overwrite an incompatible status.
 
 Each buyer can have up to 10 active deals and send one new request every 15 seconds per server. Both the active limit and cooldown are enforced in SQLite transactions, so concurrent requests and process restarts cannot bypass them. Unaccepted offers expire after 24 hours with an audit event; accepted, paid, delivered, and disputed deals are not expired by this policy. Live maintenance runs every minute, with lazy checks when offers are used. Money amounts must be positive and at most `9,999,999,999.99`, with at most two decimal places. Game payments must contain at most `9,999,999,999` individual items, including the multiplication by 64 for stacks. Item descriptions are limited to 1,000 characters.
+
+## Keep the hub organized
+
+Each accepted deal has its own private thread under the configured hub. Different trades are kept separate, including trades between the same two people. Ordinary members see conversations they can access; authorized staff with Manage Threads can access private threads for moderation. New thread names contain a short numeric deal ID and the item, without both participants' names.
+
+Run `/deals` anywhere in the server for an ephemeral dashboard. Choose **Active deals**, **Needs your action**, **Completed deals**, or **All deals**. Each page has up to six compact entries, with **Previous**, **Refresh**, and **Next** buttons. Selecting an entry opens its full reference and details. **Needs your action** shows requests the seller must review, payments the buyer must confirm, deliveries the seller must confirm, and receipts the buyer must confirm. Disputes remain visible under Active while staff review them.
+
+By default, DealBot locks and archives only `completed`, `cancelled`, and `refunded` conversations after 30 minutes without new messages. It checks roughly once per minute in batches of five, so cleanup can happen later when there is a backlog. Recent messages or a recent reopening defer cleanup. Existing finished, unarchived conversations are eligible too; already archived history is not exported or DMed again by this scan. SQLite retains cleanup progress through restarts. The process does not delete channels, deal records, or saved transcripts, and it never changes a deal's payment or completion status.
+
+An administrator can use `/set-thread-policy archive-after` to select **Off**, **15 minutes**, **30 minutes**, **1 hour**, or **24 hours** for that server. Turning it off leaves participant and staff closure available. The finished-thread worker excludes pending, active, and disputed deals. Discord's separate 24-hour inactivity auto-archive setting for new deal threads still applies and does not complete a deal.
+
+If an accepted active conversation was archived, select it from `/deals` and use **Resume Conversation**. Current server access, thread permissions, and private-thread membership are checked again. Removed participants are not added back automatically; ordinary participants cannot unlock a locked thread. Authorized local staff need the current thread-management permissions to unlock one. Finished conversations stay archived and their captured files remain available through `/transcript`.
 
 ## Transcript cards
 
@@ -138,7 +153,7 @@ Each buyer can have up to 10 active deals and send one new request every 15 seco
 
 After a deal conversation is archived, both participants receive a purple summary card with the server's icon, item, reference, buyer, seller, agreed payment, closer, and closing time. Names and IDs use clear code-block fields, similar to a ticket transcript. **View Deal** opens the original private conversation; the HTML conversation transcript is attached to the same DM. The file uses the item name, such as `transcript-menace-cape-42.html`.
 
-The closer is recorded before an archive request and confirmed using Discord's archive timestamp. Participant approval and moderator closure retain their actual actor. Archives made outside DealBot's close controls are labeled **Automatic archive or a Discord-side action**, since the bot cannot identify that actor from a thread update alone. Failed attempts and reopened threads do not inherit the wrong closer. REST and Gateway observations of the same archive share a delivery operation, including SDK cache races.
+The closer is recorded before an archive request and confirmed using Discord's archive timestamp. Participant approval and moderator closure retain their actual actor. Finished-thread cleanup identifies DealBot as the automatic closer. Archives made outside DealBot's close controls are labeled **Automatic archive or a Discord-side action**, since the bot cannot identify that actor from a thread update alone. Failed attempts and reopened threads do not inherit the wrong closer. REST and Gateway observations of the same archive share a delivery operation, including SDK cache races.
 
 The preview is illustrative; Discord controls the theme and attachment preview. New archives atomically queue capture work with their closure record. Captured HTML and summaries are saved in SQLite before sending. Each participant has independent delivery progress: only pending outcomes are retried after a restart. Upgrades do not scan and resend every historical closure. No saved HTML is invented for older archives.
 
@@ -187,7 +202,7 @@ npm run db:init
 npm run dev
 ```
 
-Tests use isolated temporary or in-memory databases and simulated Discord interactions. They do not log in, publish commands, or send messages. Coverage includes legacy migrations, scoped reputation, anti-farming rewards, audited decisions, atomic state changes, rollback, concurrent-process caps and cooldowns, privacy defaults, request expiry, permissions, setup/stats, command deployment routes, online backup/restore integrity, payment validation, fixed listing prices and quantities, transcript generation, and duplicate-delivery prevention. The check command verifies JavaScript syntax, JSON, and the absence of Arabic text in built-in source strings.
+Tests use isolated temporary or in-memory databases and simulated Discord interactions. They do not log in, publish commands, or send messages. Coverage includes legacy migrations, scoped reputation, anti-farming rewards, audited decisions, atomic state changes, rollback, concurrent-process caps and cooldowns, privacy defaults, request expiry, permissions, setup/stats, private dashboard controls, finished-thread cleanup and reopening, command deployment routes, online backup/restore integrity, payment validation, fixed listing prices and quantities, transcript generation, and duplicate-delivery prevention. The check command verifies JavaScript syntax, JSON, and the absence of Arabic text in built-in source strings.
 
 `commands:validate` serializes and validates command definitions without credentials or HTTP. Only `commands:deploy` registers them. `db:init` applies idempotent migrations. For native SQLite build tools on Linux, install Python, Make, and a C++ compiler if your Node version has no prebuilt module.
 

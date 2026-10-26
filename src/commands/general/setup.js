@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
-const { getGuildSettings } = require('../../database/guildSettingsRepository');
+const { getGuildSettings, getThreadCleanupMinutes } = require('../../database/guildSettingsRepository');
 const { RANKS } = require('../../utils/ranks');
 const { isSafeRankRole } = require('../../utils/roleSync');
 
@@ -80,6 +80,9 @@ module.exports = {
                         : missingStaff.length ? `⚠️ Grant <@&${moderatorRole.id}> these permissions in the hub: **${missingStaff.join(', ')}**. Then run /set-mod-role again.`
                             : `✅ <@&${moderatorRole.id}> can read and manage private deal threads and resolve disputes.` },
                 { name: 'Optional · Trust Rank Roles', value: rankText },
+                { name: 'Conversation Organization', value: getThreadCleanupMinutes(interaction.guildId)
+                    ? `Finished deal threads are archived after ${getThreadCleanupMinutes(interaction.guildId)} minutes without new messages. Active and disputed deals are excluded. Use /set-thread-policy to change this delay; /deals opens your private dashboard.`
+                    : 'Automatic finished-thread cleanup is disabled. Use /set-thread-policy to enable it; /deals opens your private dashboard.' },
                 { name: 'Server Scope', value: 'Configuration, trust points, scam flags, manual rank overrides, and /stats are specific to this server. Use /help for the deal workflow and /stats for private activity totals.' },
             )
             .setFooter({ text: 'DealBot • Read-only health check • Optional rank roles do not block deals' })

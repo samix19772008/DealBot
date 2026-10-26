@@ -50,7 +50,7 @@ function interaction(options = {}) {
 
 test('every command definition is English, unique, valid, and unavailable in DMs', () => {
     const names = new Set();
-    assert.equal(commands.length, 18);
+    assert.equal(commands.length, 19);
     for (const entry of commands) {
         const data = entry.data.toJSON();
         assert.equal(data.dm_permission, false, data.name);
@@ -63,7 +63,7 @@ test('every command definition is English, unique, valid, and unavailable in DMs
 
 test('all setup commands independently reject a member without Administrator', async () => {
     cleanDatabase();
-    for (const name of ['set-hub-channel', 'set-mod-role', 'set-rank-role', 'set-rank', 'set-language', 'setup', 'stats', 'review-flag']) {
+    for (const name of ['set-hub-channel', 'set-mod-role', 'set-rank-role', 'set-rank', 'set-language', 'set-thread-policy', 'setup', 'stats', 'review-flag']) {
         const input = interaction();
         await command(name).execute(input);
         assert.equal(input.replies.length, 1, name);
@@ -81,10 +81,12 @@ test('/deals only lists the current user\'s deals in the selected server', async
     const input = interaction();
     await command('deals').execute(input);
     assert.equal(input.replies[0].ephemeral, true);
-    const output = JSON.stringify(input.replies[0].embeds[0].toJSON());
-    assert.ok(output.includes(own.transaction_uuid));
-    assert.ok(!output.includes(otherGuild.transaction_uuid));
-    assert.ok(!output.includes(otherUser.transaction_uuid));
+    const rows = input.replies[0].embeds[0].toJSON().fields;
+    assert.equal(rows.length, 1);
+    const label = deal => `Deal #${String(deal.id).padStart(4, '0')} ·`;
+    assert.ok(rows[0].name.startsWith(label(own)));
+    assert.ok(!rows.some(row => row.name.startsWith(label(otherGuild))));
+    assert.ok(!rows.some(row => row.name.startsWith(label(otherUser))));
 });
 
 test('/deals pagination returns different records and rejects invalid pages', async () => {

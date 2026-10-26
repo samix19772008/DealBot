@@ -132,8 +132,8 @@ test('a retried pending request supersedes the interrupted attempt without overw
 test('closure metadata is isolated by deal and invalid identities or timestamps write nothing', () => {
     const escrow = deal();
     const other = deal();
-    const timestamp = Date.now();
     beginThreadClosure(escrow.id, { actorId: 'buyer', kind: 'participant' });
+    const timestamp = Date.now();
     const own = recordThreadArchive(escrow.id, timestamp);
     const foreign = recordThreadArchive(other.id, timestamp);
     assert.equal(own.actor_discord_id, 'buyer');

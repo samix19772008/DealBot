@@ -16,11 +16,12 @@ async function start() {
     let stopTranscriptMaintenance = async () => {};
     let stopBackupMaintenance = async () => {};
     let stopHealth = () => {};
+    let stopThreadOrganization = async () => {};
     const shutdown = require('./src/services/runtimeLifecycle').createShutdown({
         client,
         stopEarly: [() => stopHealth(), () => stopOfferMaintenance()],
         drain: () => drainClientEvents(client),
-        stopLate: [() => stopTranscriptMaintenance(), () => stopBackupMaintenance()],
+        stopLate: [() => stopTranscriptMaintenance(), () => stopBackupMaintenance(), () => stopThreadOrganization()],
         closeDatabase: () => { if (db.open) db.close(); },
     });
     const signalHandlers = new Map();
@@ -44,6 +45,7 @@ async function start() {
         if (client.dealBotStopping) return client;
         stopOfferMaintenance = require('./src/services/offerMaintenance').startOfferMaintenance();
         stopTranscriptMaintenance = require('./src/services/transcriptMaintenance').startTranscriptMaintenance({ client });
+        stopThreadOrganization = require('./src/services/threadOrganization').startThreadOrganization({ client });
         stopBackupMaintenance = startBackupMaintenance({ sourcePath: DB_PATH, intervalMs: backupInterval });
         stopHealth = require('./src/services/runtimeHealth').startRuntimeHealth({ client, getMetrics: () => ({
             ...require('./src/services/transcripts').getTranscriptQueueStats(),

@@ -5,6 +5,7 @@ const {
 const { getEscrowById, acceptEscrow } = require('../../database/escrowRepository');
 const { getGuildSettings } = require('../../database/guildSettingsRepository');
 const { buildDealEmbed } = require('../../utils/embedTemplate');
+const { dealThreadName } = require('../../utils/threadPresentation');
 
 const REQUIRED_BOT_PERMISSIONS = [
     PermissionFlagsBits.ViewChannel,
@@ -15,10 +16,6 @@ const REQUIRED_BOT_PERMISSIONS = [
     PermissionFlagsBits.ReadMessageHistory,
     PermissionFlagsBits.EmbedLinks,
 ];
-
-function threadNamePart(name, fallback) {
-    return String(name).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 20) || fallback;
-}
 
 module.exports = {
     id: 'accept_escrow_',
@@ -80,7 +77,7 @@ module.exports = {
         let accepted = false;
         try {
             thread = await hub.threads.create({
-                name: `deal-${threadNamePart(escrow.seller_username, 'seller')}-x-${threadNamePart(escrow.buyer_username, 'buyer')}-${escrow.id}`,
+                name: dealThreadName(escrow),
                 type: ChannelType.PrivateThread,
                 autoArchiveDuration: 1440,
                 invitable: false,
@@ -100,6 +97,7 @@ module.exports = {
                     { label: 'Agreed Amount', value: formatPayment(escrow) },
                     { label: 'Next Step', value: 'The buyer confirms payment has been sent. The seller must independently verify receipt before delivering.' },
                     { label: 'Payment Tracking', value: 'DealBot records your confirmations. It does not hold, transfer, or verify money or items.' },
+                    { label: 'Your Deals', value: 'Use `/deals` for your private dashboard, action reminders, and conversation links.' },
                 ],
                 footerNote: 'Open a dispute below if you need moderator assistance',
             });

@@ -189,19 +189,41 @@ const approveClose = db.transaction((escrowId, side, actorId) => {
 function approveBuyerClose(escrowId, actorId) { return approveClose.immediate(escrowId, 'buyer', actorId); }
 function approveSellerClose(escrowId, actorId) { return approveClose.immediate(escrowId, 'seller', actorId); }
 
-/** The caller receives only their own deals in the selected server. */
-function listEscrowsForUser(guildId, discordId, { status = 'active', limit = 10, offset = 0 } = {}) {
-    if (!guildId || !discordId) return [];
-    if (!['active', 'all', ...ACTIVE_STATUSES, ...TERMINAL_STATUSES].includes(status)) return [];
+function userDealFilter(guildId, discordId, status) {
+    if (!guildId || !discordId || !['active', 'attention', 'all', ...ACTIVE_STATUSES, ...TERMINAL_STATUSES].includes(status)) return null;
+    const scope = 'e.guild_id = ? AND (buyer.discord_id = ? OR seller.discord_id = ?)';
+    if (status === 'attention') {
+        return { where: `${scope} AND (
+            (e.status = 'pending' AND seller.discord_id = ?) OR
+            (e.status = 'awaiting_payment' AND buyer.discord_id = ?) OR
+            (e.status = 'funded' AND seller.discord_id = ?) OR
+            (e.status = 'delivered' AND buyer.discord_id = ?)
+        )`, values: [guildId, discordId, discordId, discordId, discordId, discordId, discordId] };
+    }
     const statuses = status === 'all' ? [...ACTIVE_STATUSES, ...TERMINAL_STATUSES] :
         status === 'active' ? ACTIVE_STATUSES : [status];
+    return { where: `${scope} AND e.status IN (${statuses.map(() => '?').join(',')})`,
+        values: [guildId, discordId, discordId, ...statuses] };
+}
+
+/** The caller receives only their own deals in the selected server. */
+function listEscrowsForUser(guildId, discordId, { status = 'active', limit = 10, offset = 0 } = {}) {
+    const filter = userDealFilter(guildId, discordId, status);
+    if (!filter) return [];
     const safeLimit = Number.isInteger(limit) ? Math.min(25, Math.max(1, limit)) : 10;
-    const safeOffset = Number.isInteger(offset) ? Math.max(0, offset) : 0;
+    const safeOffset = Number.isSafeInteger(offset) ? Math.max(0, offset) : 0;
     return db.prepare(`${JOINED_ESCROW}
-        WHERE e.guild_id = ? AND (buyer.discord_id = ? OR seller.discord_id = ?)
-            AND e.status IN (${statuses.map(() => '?').join(',')})
+        WHERE ${filter.where}
         ORDER BY e.id DESC LIMIT ? OFFSET ?
-    `).all(guildId, discordId, discordId, ...statuses, safeLimit, safeOffset);
+    `).all(...filter.values, safeLimit, safeOffset);
+}
+
+function countEscrowsForUser(guildId, discordId, { status = 'active' } = {}) {
+    const filter = userDealFilter(guildId, discordId, status);
+    if (!filter) return 0;
+    return db.prepare(`SELECT COUNT(*) AS count FROM escrow_transactions e
+        JOIN users buyer ON buyer.id = e.buyer_id JOIN users seller ON seller.id = e.seller_id
+        WHERE ${filter.where}`).get(...filter.values).count;
 }
 
 function getEscrowEvents(escrowId, limit = 10) {
@@ -214,5 +236,5 @@ function getEscrowEvents(escrowId, limit = 10) {
 module.exports = {
     createEscrow, getEscrowById, getEscrowByChannelId, acceptEscrow, cancelEscrow,
     markAsFunded, markAsDelivered, completeEscrow, markAsDisputed, flagScammerAndCancel,
-    approveBuyerClose, approveSellerClose, listEscrowsForUser, getEscrowEvents, getEscrowReward,
+    approveBuyerClose, approveSellerClose, listEscrowsForUser, countEscrowsForUser, getEscrowEvents, getEscrowReward,
 };

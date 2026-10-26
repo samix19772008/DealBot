@@ -9,11 +9,13 @@ DealBot's current niche is a Discord gaming marketplace: one agreed payment, a p
 - Repeated trades between the same pair earn points at most once per rolling 24 hours per server. Completed deals still count in history. This limits one farming pattern; it does not establish real-world identity or eliminate alternate accounts.
 - Pending-request expiry, durable request cooldowns, and atomic limits tested with concurrent processes.
 - A setup diagnostic, auditable flag corrections, private offer defaults, and verified SQLite backups.
+- An owner-only deal dashboard with filters and navigation, short private-thread names, and permission-checked recovery of archived active conversations.
+- A server-controlled idle cleanup policy for finished conversations. Cleanup locks and archives threads without deleting evidence or changing active/disputed deal states; durable jobs survive restarts.
 - Optional global command registration for installations in multiple servers. This was validated with simulated REST calls; no live global registration was performed during development.
 
 ## Private acceptance first
 
-Complete [the private acceptance run](PRIVATE_ACCEPTANCE.md) in a nonpublic test server before announcing the bot. The owner, buyer, seller, and staff can exercise the real application without exposing an unfinished rollout to a community. Offline tests, container checks, and source publication do not complete the Discord checks in that run.
+Complete [the private acceptance run](PRIVATE_ACCEPTANCE.md) in a nonpublic test server before announcing the bot. The owner, buyer, seller, and staff can exercise the real application without exposing an unfinished rollout to a community. Include several simultaneous trades, dashboard privacy, delayed cleanup after new messages, and archived-conversation recovery. Offline tests, container checks, and source publication do not complete the Discord checks in that run.
 
 ## After private acceptance
 
@@ -29,7 +31,7 @@ The stats command cannot yet prove trader retention or measure time-to-resolutio
 2. Schedule the online database backup command, retain copies away from the host, and practice restoring one. The included command creates local snapshots; it does not configure off-machine storage or disaster recovery.
 3. Publish an actual support contact and decide data-retention and correction procedures. Private threads, moderation decisions, and DM transcripts are sensitive records. Source publication alone does not provide a support operation or a privacy policy.
 4. Complete Discord's applicable app-verification and privileged-intent requirements as installations grow. The app currently requests Server Members and Message Content for its existing workflow; current requirements must be checked in the Developer Portal.
-5. Load-test the expected workload and review thread limits, rate limits, storage growth, and the single SQLite database. These development tests do not establish multi-host scalability or shard readiness.
+5. Load-test the expected workload and review thread limits, rate limits, storage growth, and the single SQLite database. Private threads and finished-thread archiving reduce sidebar clutter; they do not remove Discord's limits. Cleanup runs in batches of five approximately once per minute and may take longer when there is a backlog. These development tests do not establish multi-host scalability or shard readiness.
 6. Verify the durable transcript queue and private recovery flow on the installed bot. New archive observations save work and individual outcomes in SQLite; failed deliveries resume with bounded backoff, and `/transcript` can retrieve a captured file. Gateway events missed while the bot was offline are not discovered by scanning all historical threads. Reopened/deleted sources may prevent capture; closed DMs and ambiguous send acknowledgements still limit delivery guarantees. Monitor exhausted retries and storage growth, and choose retention for private HTML artifacts.
 
 The accurate product description is **deal coordination and dispute records for Discord communities**. DealBot does not hold, transfer, verify, insure, or refund funds. Financial custody would require a separate payment integration and operational design, not a label change.

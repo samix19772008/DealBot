@@ -1,6 +1,7 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const { getEscrowById, getEscrowReward } = require('../database/escrowRepository');
 const { syncMemberRankRole } = require('../utils/roleSync');
+const { getThreadCleanupMinutes } = require('../database/guildSettingsRepository');
 
 async function deny(interaction, content) {
     const payload = { content, ephemeral: true };
@@ -47,6 +48,7 @@ function closeButtons(escrowId) {
 }
 
 async function sendCloseControls(interaction, escrow) {
+    const cleanupMinutes = getThreadCleanupMinutes(escrow.guild_id);
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('Close Conversation')
@@ -54,6 +56,9 @@ async function sendCloseControls(interaction, escrow) {
         .addFields(
             { name: 'Buyer Approval', value: escrow.buyer_close_approved ? '✅ Approved' : '⬜ Pending', inline: true },
             { name: 'Seller Approval', value: escrow.seller_close_approved ? '✅ Approved' : '⬜ Pending', inline: true },
+            { name: 'Conversation Organization', value: cleanupMinutes
+                ? `This finished conversation will be archived after ${cleanupMinutes} minutes without new messages. Approve closing below to close it sooner. Its records remain available through /deals and /transcript.`
+                : 'Automatic finished-thread cleanup is disabled here. Both participants can approve closing, or authorized staff can close it.' },
         )
         .setFooter({ text: 'DealBot • A transcript is sent when this conversation is archived.' });
     const buttons = closeButtons(escrow.id);

@@ -1,5 +1,5 @@
 const { formatPayment } = require('../../utils/payments');
-const { SlashCommandBuilder, EmbedBuilder, escapeMarkdown } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, escapeMarkdown } = require('discord.js');
 const { getEscrowById, getEscrowEvents } = require('../../database/escrowRepository');
 const { expirePendingOffers } = require('../../database/offerPolicyRepository');
 const { isModerator } = require('../../utils/permissions');
@@ -18,7 +18,13 @@ module.exports = {
             .setMinLength(1).setMaxLength(50).setRequired(true)),
 
     async execute(interaction) {
-        const reference = interaction.options.getString('reference')?.trim();
+        return showDealStatus(interaction, interaction.options.getString('reference'));
+    },
+    showDealStatus,
+};
+
+async function showDealStatus(interaction, suppliedReference, { allowResume = false } = {}) {
+        const reference = typeof suppliedReference === 'string' ? suppliedReference.trim() : '';
         if (interaction.guildId) expirePendingOffers({ guildId: interaction.guildId });
         const escrow = reference && getEscrowById(reference);
         const participant = escrow && [escrow.buyer_discord_id, escrow.seller_discord_id].includes(interaction.user.id);
@@ -58,7 +64,7 @@ module.exports = {
             embed.addFields({ name: 'Conversation', value: `[Open private thread](https://discord.com/channels/${interaction.guildId}/${escrow.channel_id})` });
         }
         const insideDealThread = Boolean(escrow.channel_id && interaction.channelId === escrow.channel_id);
-        const components = escrow.status === 'pending' || insideDealThread
+        let components = escrow.status === 'pending' || insideDealThread
             ? buildDealControls(escrow, { moderator, userId: interaction.user.id })
             : [];
         if (components.length) {
@@ -70,6 +76,11 @@ module.exports = {
         } else if (escrow.status === 'disputed') {
             embed.addFields({ name: 'Current Controls', value: 'This deal is awaiting review by authorized staff.' });
         }
+        if (allowResume && !insideDealThread && escrow.channel_id &&
+            ['awaiting_payment', 'funded', 'delivered', 'disputed'].includes(escrow.status)) {
+            components = [new ActionRowBuilder().addComponents(new ButtonBuilder()
+                .setCustomId(`deals_resume_${escrow.id}`).setLabel('Resume Conversation').setStyle(ButtonStyle.Primary))];
+            embed.addFields({ name: 'Resume Conversation', value: 'Open or resume this active deal conversation. Access is checked again; completed conversations remain archived.' });
+        }
         return interaction.reply({ embeds: [embed], components, ephemeral: true, allowedMentions: { parse: [] } });
-    },
-};
+}

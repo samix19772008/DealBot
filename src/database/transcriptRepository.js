@@ -22,9 +22,19 @@ function validArchiveTimestamp(timestamp) {
 }
 
 /** Call only after locking succeeds and immediately before requesting archive. */
-const beginClosure = db.transaction((escrowId, { actorId, actorName, kind = 'participant' } = {}) => {
+function insertClosure(escrowId, { actorId, actorName, kind = 'participant' } = {}, automatic = false) {
     const escrow = requireEscrow(escrowId);
-    if (!['participant', 'moderator'].includes(kind)) throw new Error('A tracked closure must be initiated by a participant or moderator.');
+    if (automatic) {
+        if (!['completed', 'cancelled', 'refunded'].includes(escrow.status)) {
+            throw new Error('Only finished deal conversations can be archived automatically.');
+        }
+        // Keep legacy schema compatibility while preserving the real bot actor.
+        // This is separate from participant/moderator initiated closure requests.
+        kind = 'untracked';
+        actorName = 'DealBot (automatic cleanup)';
+    } else if (!['participant', 'moderator'].includes(kind)) {
+        throw new Error('A tracked closure must be initiated by a participant or moderator.');
+    }
     if (typeof actorId !== 'string' || !actorId.trim() || actorId.length > 128) {
         throw new Error('The user requesting closure must be recorded.');
     }
@@ -41,9 +51,13 @@ const beginClosure = db.transaction((escrowId, { actorId, actorName, kind = 'par
     return Number(db.prepare(`INSERT INTO escrow_thread_closures
         (escrow_id, actor_discord_id, actor_name, kind) VALUES (?, ?, ?, ?)`)
         .run(escrow.id, actorId.trim(), actorName?.trim() || null, kind).lastInsertRowid);
-});
+}
+
+const beginClosure = db.transaction((escrowId, options) => insertClosure(escrowId, options));
+const beginAutomaticClosure = db.transaction((escrowId, options) => insertClosure(escrowId, options, true));
 
 function beginThreadClosure(escrowId, options) { return beginClosure.immediate(escrowId, options); }
+function beginAutomaticThreadClosure(escrowId, options) { return beginAutomaticClosure.immediate(escrowId, options); }
 
 /** A late API failure must not overwrite a Gateway-confirmed archive. */
 function failThreadClosure(requestId) {
@@ -104,4 +118,4 @@ function getThreadClosure(escrowId, archiveTimestampMs) {
     return escrow ? findArchive.get(escrow.id, archiveTimestampMs) : undefined;
 }
 
-module.exports = { beginThreadClosure, failThreadClosure, recordThreadArchive, getThreadClosure, markThreadReopened };
+module.exports = { beginThreadClosure, beginAutomaticThreadClosure, failThreadClosure, recordThreadArchive, getThreadClosure, markThreadReopened };

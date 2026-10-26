@@ -1,53 +1,29 @@
-const { formatPayment } = require('../../utils/payments');
-const { SlashCommandBuilder, EmbedBuilder, escapeMarkdown } = require('discord.js');
-const { listEscrowsForUser } = require('../../database/escrowRepository');
-const { expirePendingOffers } = require('../../database/offerPolicyRepository');
-
-const PAGE_SIZE = 6;
-const displayStatus = status => status.replaceAll('_', ' ');
+const { SlashCommandBuilder } = require('discord.js');
+const { buildDealDashboard, DASHBOARD_FILTERS, MAX_DASHBOARD_PAGE } = require('../../utils/dealDashboard');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('deals')
-        .setDescription('Privately list your escrow deals in this server')
+        .setDescription('Open your private deal dashboard in this server')
         .setDMPermission(false)
         .addStringOption(option => option
-            .setName('status').setDescription('Show active deals or your full history')
-            .addChoices({ name: 'Active deals', value: 'active' }, { name: 'All deals', value: 'all' }))
+            .setName('status').setDescription('Filter active deals, your next actions, completed deals, or all history')
+            .addChoices(...DASHBOARD_FILTERS.map(filter => ({ name: filter.label, value: filter.key }))))
         .addIntegerOption(option => option
-            .setName('page').setDescription('Page number').setMinValue(1).setMaxValue(1000)),
+            .setName('page').setDescription('Page number').setMinValue(1).setMaxValue(MAX_DASHBOARD_PAGE)),
 
     async execute(interaction) {
         if (!interaction.guildId) {
             return interaction.reply({ content: 'Use this command inside your escrow server.', ephemeral: true });
         }
-        const page = interaction.options.getInteger('page') ?? 1;
-        const status = interaction.options.getString('status') ?? 'active';
-        if (!Number.isInteger(page) || page < 1 || page > 1000 || !['active', 'all'].includes(status)) {
-            return interaction.reply({ content: 'Choose a page between 1 and 1000 and a valid status filter.', ephemeral: true });
+        try {
+            const payload = buildDealDashboard({ guildId: interaction.guildId, userId: interaction.user.id,
+                status: interaction.options.getString('status') ?? 'active',
+                page: interaction.options.getInteger('page') ?? 1 });
+            return interaction.reply({ ...payload, ephemeral: true });
+        } catch (error) {
+            if (error.code !== 'DASHBOARD_INPUT_INVALID') throw error;
+            return interaction.reply({ content: error.message, ephemeral: true, allowedMentions: { parse: [] } });
         }
-        expirePendingOffers({ guildId: interaction.guildId });
-        const deals = listEscrowsForUser(interaction.guildId, interaction.user.id, {
-            status, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE,
-        });
-        const embed = new EmbedBuilder()
-            .setColor(0x5865F2)
-            .setTitle(status === 'active' ? 'Your Active Deals' : 'Your Deal History')
-            .setDescription(deals.length
-                ? 'Only your deals in this server are shown. Use `/deal-status` with a reference below to view its timeline.'
-                : `No ${status === 'active' ? 'active ' : ''}deals found on this page.${page > 1 ? ' Try a previous page.' : ' Start one with /deal.'}`)
-            .setFooter({ text: `DealBot • Page ${page}${deals.length === PAGE_SIZE ? ` • Use /deals page:${page + 1} for the next page` : ''}` })
-            .setTimestamp();
-        for (const deal of deals) {
-            const otherId = deal.buyer_discord_id === interaction.user.id ? deal.seller_discord_id : deal.buyer_discord_id;
-            const item = escapeMarkdown(String(deal.item_description).slice(0, 160));
-            const payment = formatPayment(deal);
-            const thread = deal.channel_id ? `\n[Open conversation](https://discord.com/channels/${interaction.guildId}/${deal.channel_id})` : '';
-            embed.addFields({
-                name: deal.transaction_uuid,
-                value: `**${displayStatus(deal.status)}** · ${escapeMarkdown(payment)}\nWith <@${otherId}>\n${item}${thread}`,
-            });
-        }
-        return interaction.reply({ embeds: [embed], ephemeral: true, allowedMentions: { parse: [] } });
     },
 };

@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS guild_settings (
     moderator_role_id   TEXT,
     hub_channel_id      TEXT,
     language            TEXT NOT NULL DEFAULT 'en',
+    thread_cleanup_minutes INTEGER NOT NULL DEFAULT 30,
     bronze_role_id      TEXT,
     silver_role_id      TEXT,
     gold_role_id        TEXT,
@@ -235,3 +236,16 @@ CREATE TABLE IF NOT EXISTS transcript_delivery_recipients (
 );
 CREATE INDEX IF NOT EXISTS idx_transcript_recipient_due ON transcript_delivery_recipients
     (status, next_attempt, lease_until);
+
+CREATE TABLE IF NOT EXISTS deal_thread_cleanup (
+    escrow_id INTEGER PRIMARY KEY REFERENCES escrow_transactions(id) ON DELETE CASCADE,
+    due_at INTEGER NOT NULL CHECK (due_at >= 0),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'archived', 'unavailable')),
+    lease_token TEXT,
+    lease_until INTEGER,
+    attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    last_error TEXT,
+    archived_timestamp INTEGER,
+    updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_deal_thread_cleanup_due ON deal_thread_cleanup(status, due_at, lease_until);

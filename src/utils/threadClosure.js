@@ -17,10 +17,12 @@ async function observeThread(channel) {
  * Gateway event may arrive in either order; both record the same archive timestamp.
  * A successful archive is never rolled back because finalizing its metadata failed.
  */
-async function closeDealThread({ channel, escrowId, actor, kind, reason }, repository = transcriptRepository) {
+async function closeDealThread({ channel, escrowId, actor, kind, reason, beforeArchive }, repository = transcriptRepository) {
     const actorId = actor?.id;
     const actorName = actor?.tag || actor?.username || actorId;
-    if (!channel || !actorId || !['participant', 'moderator'].includes(kind)) {
+    if (!channel || !actorId || !['participant', 'moderator', 'automatic'].includes(kind) ||
+        (kind === 'automatic' && actor.bot !== true) ||
+        (beforeArchive != null && typeof beforeArchive !== 'function')) {
         throw new Error('A deal thread, actor, and valid closure kind are required.');
     }
 
@@ -56,8 +58,42 @@ async function closeDealThread({ channel, escrowId, actor, kind, reason }, repos
     // was pressed. Its previous timestamp is recorded without a new close request.
     if (channel.archived === true) return finalize(channel, { alreadyArchived: true });
 
+    // Automatic cleanup revalidates its lease, policy and current conversation
+    // activity around the awaited lock request. An expired decision cannot close
+    // a conversation that changed while Discord was handling that request.
+    if (beforeArchive && await beforeArchive(channel) === false) return { archived: false, skipped: true };
+    const wasLocked = channel.locked;
+    async function restoreUnlockedState() {
+        if (wasLocked !== false) return;
+        let observed = channel;
+        if (typeof channel.fetch === 'function') {
+            try { observed = await channel.fetch(true); }
+            // A stale cache cannot prove that another actor has not archived it.
+            catch { return; }
+        }
+        if (observed?.archived !== false || observed.locked === false) return;
+        const target = typeof observed.setLocked === 'function' ? observed : channel;
+        await target.setLocked(false, 'Finished conversation cleanup was deferred').catch(() => {});
+    }
     await channel.setLocked(true, reason);
-    const requestId = repository.beginThreadClosure(escrowId, { actorId, actorName, kind });
+    try {
+        if (beforeArchive && await beforeArchive(channel) === false) {
+            await restoreUnlockedState();
+            return { archived: false, skipped: true };
+        }
+    } catch (error) {
+        await restoreUnlockedState();
+        throw error;
+    }
+    let requestId;
+    try {
+        requestId = kind === 'automatic'
+            ? repository.beginAutomaticThreadClosure(escrowId, { actorId })
+            : repository.beginThreadClosure(escrowId, { actorId, actorName, kind });
+    } catch (error) {
+        if (kind === 'automatic') await restoreUnlockedState();
+        throw error;
+    }
     let archivedThread;
     try {
         archivedThread = await channel.setArchived(true, reason);

@@ -2,7 +2,7 @@ const { Events, PermissionFlagsBits } = require('discord.js');
 const { getEscrowById } = require('../database/escrowRepository');
 const { expirePendingOffers } = require('../database/offerPolicyRepository');
 
-const processingDeals = new Set();
+const { processingDeals } = require('../utils/dealLocks');
 const DM_ACTIONS = new Set(['accept_escrow_', 'cancel_escrow_', 'cancel_reason_modal_']);
 
 async function report(interaction, content) {
@@ -12,7 +12,8 @@ async function report(interaction, content) {
 }
 
 function getActionEscrowId(interaction, handler) {
-    if (['deal_offer_modal_', 'deal_payment_method_', 'deal_product_', 'listing_preview_'].includes(handler.id)) return null;
+    if (['deal_offer_modal_', 'deal_payment_method_', 'deal_product_', 'listing_preview_',
+        'deals_page_', 'deals_filter_', 'deals_pick_'].includes(handler.id)) return null;
     const value = interaction.customId.slice(handler.id.length);
     const match = handler.id === 'scammer_pick_' ? value.match(/^(?:buyer|seller)_(\d+)$/) : value.match(/^(\d+)$/);
     return match?.[1] ?? false;
@@ -38,10 +39,11 @@ async function executeAction(interaction, handler) {
         return report(interaction, 'This request has ended or expired. Use /deal to start a new request.');
     }
     const isPendingOfferAction = DM_ACTIONS.has(handler.id) && escrow.status === 'pending';
+    const isDashboardResume = handler.id === 'deals_resume_' && Boolean(interaction.guildId);
     if (!interaction.guildId && !isPendingOfferAction) {
         return report(interaction, 'Use the current controls inside the deal thread.');
     }
-    if (!isPendingOfferAction && (!escrow.channel_id || interaction.channelId !== escrow.channel_id)) {
+    if (!isPendingOfferAction && !isDashboardResume && (!escrow.channel_id || interaction.channelId !== escrow.channel_id)) {
         return report(interaction, 'Use this action inside its original deal thread.');
     }
     const key = String(escrow.id);

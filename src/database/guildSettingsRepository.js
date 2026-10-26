@@ -24,4 +24,29 @@ function setLanguage(guildId, language) {
     setSetting(guildId, 'language', 'en');
 }
 
-module.exports = { getGuildSettings, setModeratorRole, setRankRole, setHubChannel, setLanguage };
+const THREAD_CLEANUP_MINUTES = Object.freeze([0, 15, 30, 60, 1440]);
+
+function getThreadCleanupMinutes(guildId) {
+    const minutes = getGuildSettings(guildId)?.thread_cleanup_minutes;
+    return THREAD_CLEANUP_MINUTES.includes(minutes) ? minutes : 30;
+}
+
+function setThreadCleanupMinutes(guildId, minutes) {
+    if (!Number.isInteger(minutes) || !THREAD_CLEANUP_MINUTES.includes(minutes)) {
+        throw new Error('Choose a finished-chat archive delay of 0, 15, 30, 60, or 1440 minutes.');
+    }
+    return db.transaction(() => {
+        const now = Date.now();
+        setSetting(guildId, 'thread_cleanup_minutes', minutes);
+        // Invalidate an old policy's claims. The worker rechecks the current
+        // policy and conversation activity before touching Discord again.
+        db.prepare(`UPDATE deal_thread_cleanup SET due_at = ?, lease_token = NULL, lease_until = NULL,
+            updated_at = ? WHERE status = 'pending' AND escrow_id IN (
+                SELECT id FROM escrow_transactions WHERE guild_id = ?
+            )`).run(now, now, guildId);
+        return minutes;
+    }).immediate();
+}
+
+module.exports = { getGuildSettings, setModeratorRole, setRankRole, setHubChannel, setLanguage,
+    getThreadCleanupMinutes, setThreadCleanupMinutes, THREAD_CLEANUP_MINUTES };

@@ -34,7 +34,7 @@ function buildTranscriptSummary({ escrow, closure, guild, clientUser, closerUser
     if (logo) author.iconURL = logo;
     const firstLine = String(escrow.item_description).split(/\r?\n/).find(line => line.trim()) || 'Deal';
     const itemTitle = firstLine.replace(/[*_~`>#|]/g, '').replace(/\s+/g, ' ').trim() || 'Deal';
-    const knownCloser = closure.actor_discord_id && closure.kind !== 'untracked';
+    const knownCloser = Boolean(closure.actor_discord_id);
     const closedBy = knownCloser
         ? `${closure.actor_name || closure.actor_discord_id} : ${closure.actor_discord_id}`
         : 'Automatic archive or a Discord-side action';
